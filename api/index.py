@@ -8,6 +8,7 @@ from app import (
     get_df_for_filters,
     compose_text_core,
     create_pdf,
+    core_self_check
 )
 import tempfile, os, traceback
 
