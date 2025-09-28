@@ -1,6 +1,6 @@
 # api/index.py
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from pathlib import Path
 import tempfile
 from app import (
@@ -11,6 +11,13 @@ from app import (
     core_self_check
 )
 import tempfile, os, traceback
+
+
+app = FastAPI()
+
+@app.get("/")
+def home():
+    return RedirectResponse("/HTML_ata.html", status_code=302)
 
 app = FastAPI()
 ROOT = Path(__file__).parent.parent
