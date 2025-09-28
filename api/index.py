@@ -3,7 +3,7 @@ from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from pathlib import Path
 import tempfile
-from gerar_ata_core import (
+from app import (
     load_participantes_from_xlsx,
     get_df_for_filters,
     compose_text_core,
