@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Gerador de Atas - Conselho de Classe</title>
+<style>
+/* (base visual do seu arquivo, mantida e levemente ajustada) */
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background: #434276; min-height:100vh;padding:20px}
+.container{max-width:1000px;margin:0 auto;background:#fff;border-radius:15px;box-shadow:0 20px 40px rgba(0,0,0,.1);overflow:hidden}
+.header{background:#f0e763;color:#010101;text-align:center;padding:30px}
+.header h1{font-size:28px;margin-bottom:10px}
+.header p{opacity:.9;font-size:16px}
+.form-container{padding:40px}
+.form-section{margin-bottom:30px}
+.form-section h3{color:#2c3e50;margin-bottom:15px;font-size:18px;border-bottom:2px solid #eee;padding-bottom:5px}
+.form-group{margin-bottom:20px}
+.form-group label{display:block;margin-bottom:8px;font-weight:600;color:#444}
+.form-group input,.form-group textarea,.form-group select{width:100%;padding:12px 15px;border:2px solid #e1e8ed;border-radius:8px;font-size:16px;transition:all .3s ease}
+.form-group input:focus,.form-group textarea:focus,.form-group select:focus{outline:none;border-color:#667eea;box-shadow:0 0 0 3px rgba(102,126,234,.1)}
+.file-upload{position:relative;display:inline-block;cursor:pointer;width:100%}
+.file-upload input[type="file"]{position:absolute;left:-9999px}
+.file-upload-label{display:block;padding:15px 20px;background:#f8f9fa;border:2px dashed #dee2e6;border-radius:8px;text-align:center;color:#6c757d;cursor:pointer;transition:all .3s ease}
+.file-upload-label:hover{background:#e9ecef;border-color:#667eea}
+.file-upload.has-file .file-upload-label{background:#d4edda;border-color:#28a745;color:#155724}
+.btn{display:inline-block;padding:14px 18px;background:#5e17eb;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;transition:all .3s ease;text-decoration:none}
+.btn:hover{transform:translateY(-2px);box-shadow:0 10px 20px rgba(0,0,0,.1)}
+.btn:disabled{background:#ccc;cursor:not-allowed;transform:none}
+.btn-success{background:linear-gradient(135deg,#28a745 0%,#20c997 100%)}
+.btn-danger{background:linear-gradient(135deg,#dc3545 0%,#c82333 100%)}
+.btn-secondary{background:linear-gradient(135deg,#6c757d 0%,#495057 100%)}
+.progress-bar{width:100%;height:6px;background:#e9ecef;border-radius:3px;overflow:hidden;margin:20px 0;display:none}
+.progress-fill{height:100%;background:linear-gradient(90deg,#28a745,#20c997);width:0%;transition:width .3s ease;border-radius:3px}
+.status-message{padding:15px;border-radius:8px;margin:20px 0;display:none}
+.status-success{background:#d4edda;color:#155724;border:1px solid #c3e6cb}
+.status-error{background:#f8d7da;color:#721c24;border:1px solid #f5c6cb}
+.status-info{background:#d1ecf1;color:#0c5460;border:1px solid #bee5eb}
+.data-preview{background:#f8f9fa;border:1px solid #dee2e6;border-radius:8px;padding:15px;margin-top:15px;display:none}
+.data-preview h4{color:#2c3e50;margin-bottom:10px}
+.data-preview p{margin-bottom:5px;color:#6c757d}
+.form-row{display:flex;gap:20px}
+.form-row .form-group{flex:1}
+.queue{background:#f8f9ff;border:1px solid #dee2f0;border-radius:8px;padding:15px}
+.queue ul{margin-top:10px;list-style:disc;padding-left:18px}
+/* Escopo: só a lista de participantes */
+#participantesBox { text-align: left; }  /* evita herdar alinhamento à direita do container pai */
+
+#participantesBox .part-item{
+  display: flex;              /* input + texto na mesma linha */
+  align-items: flex-start;    /* alinha pelo topo da 1ª linha do texto */
+  gap: 8px;
+  padding: 4px 0;
+}
+
+#participantesBox .part-item input[type="checkbox"]{
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0 0;          /* “empurra” 2px pra baixo pra casar com o texto */
+}
+
+#participantesBox .part-item label{
+  margin: 0;
+  line-height: 1.25;          /* textos longos quebram bonitinho */
+  cursor: pointer;
+}
+
+@media (max-width: 768px){.form-row{flex-direction:column;gap:0}.container{margin:10px;border-radius:10px}.form-container{padding:20px}}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1> Gera Ata</h1>
+    <p>Gere várias atas e receba tudo por e-mail no final</p>
+  </div>
+  <div id="connBanner" style="display:none; padding:10px; border-radius:8px; margin-bottom:12px;"></div>
+
+  <div class="form-container">
+    <form id="ataForm" enctype="multipart/form-data">
+
+      <!-- Filtros -->
+      <div class="form-row">
+        <div class="form-group">
+          <label for="ano">Ano</label>
+          <select id="ano" required></select>
+        </div>
+        <div class="form-group">
+          <label for="turno">Turno</label>
+          <select id="turno" required></select>
+        </div>
+        <div class="form-group">
+          <label for="turma">Turma</label>
+          <select id="turma" required></select>
+        </div>
+        <div class="form-group">
+          <label for="trimestre">Trimestre</label>
+          <select id="trimestre" required></select>
+        </div>
+      </div>
+
+      <!-- Dados da ata -->
+      <div class="form-section">
+        <h3>Informações da Ata</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="numero_ata">Número da Ata</label>
+            <input type="text" id="numero_ata" required placeholder="Ex: 001/2025"/>
+          </div>
+          <div class="form-group">
+            <label for="data_reuniao">Data da Reunião</label>
+            <input type="date" id="data_reuniao" required />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="horario_inicio">Início</label>
+            <input type="time" id="horario_inicio" required />
+          </div>
+          <div class="form-group">
+            <label for="horario_fim">Término</label>
+            <input type="time" id="horario_fim" required />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="presidente">Presidente do Conselho</label>
+          <input type="text" id="presidente" required placeholder="Nome do presidente"/>
+        </div>
+        <div class="form-group">
+          <label>Participantes</label>
+
+          <!-- Controles -->
+          <div class="form-row" style="gap:10px; align-items:flex-end;">
+            <div class="form-group" style="flex:2;">
+              <label for="filtroParticipantes" style="margin-bottom:4px;">Filtrar</label>
+              <input type="text" id="filtroParticipantes" placeholder="Digite para filtrar..."/>
+            </div>
+            <div class="form-group" style="flex:1;">
+              <button type="button" class="btn" id="btnRecarregarPart">Recarregar do Excel</button>
+            </div>
+            <div class="form-group" style="flex:1;">
+              <button type="button" class="btn btn-secondary" id="btnSelecionarTodos">Selecionar todos</button>
+            </div>
+            <div class="form-group" style="flex:1;">
+              <button type="button" class="btn btn-secondary" id="btnLimparSelecao">Limpar seleção</button>
+            </div>
+          </div>
+
+          <!-- Lista com checkboxes -->
+          <div id="participantesBox" style="border:1px solid #dee2e6;border-radius:8px;padding:12px;max-height:260px;overflow:auto;background:#fff;">
+            <em>Carregando participantes do Excel...</em>
+          </div>
+
+          <!-- Campo oculto só para compatibilidade com o back-end -->
+          <input type="hidden" id="participantes" />
+        </div>
+
+      </div>
+  <!-- Pré-visualização e Edição -->
+  <div class="form-section">
+    <h3>Pré-visualização</h3>
+    <div class="form-row" style="gap:10px; flex-wrap:wrap;">
+      <button type="button" class="btn" id="btnPreview">Pré-visualizar texto</button>
+      <button type="button" class="btn btn-secondary" id="btnAtualizarPreview" style="display:none;">Atualizar prévia formatada</button>
+    </div>
+
+    <div id="editorPane" style="display:none; margin-top:12px;">
+      <div class="form-group">
+        <label for="textoEditado">Texto da ata (editável)</label>
+        <textarea id="textoEditado" rows="12" placeholder="O texto gerado aparecerá aqui para você ajustar antes de gerar o PDF."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Prévia formatada</label>
+        <div id="previewFormatado" style="border:1px solid #dee2e6;border-radius:8px;padding:12px;background:#fff;min-height:120px;"></div>
+      </div>
+    </div>
+  </div>
+
+      <!-- Fila e E-mail -->
+      <div class="form-section">
+        <h3> Envio</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="email">Seu e-mail (para receber o ZIP no final)</label>
+            <input type="email" id="email" required placeholder="voce@exemplo.com"/>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <button type="button" class="btn btn-success" id="btnAdd"> Adicionar à fila (Gerar mais uma)</button>
+          <button type="button" class="btn" id="btnList"> Atualizar fila</button>
+          <button type="button" class="btn btn-secondary" id="btnReset"> Limpar fila</button>
+        </div>
+
+        <div class="queue" style="margin-top:15px">
+          <strong>Atas na fila:</strong>
+          <ul id="queueList"></ul>
+        </div>
+
+        <button type="button" class="btn btn-danger" id="btnFinalize" style="width:100%;margin-top:16px">
+           Finalizar e enviar ZIP por e-mail
+        </button>
+
+        <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
+        <div id="statusMessage" class="status-message"></div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  // ---------- refs ----------
+  const anoSel = document.getElementById('ano');
+  const turnoSel = document.getElementById('turno');
+  const turmaSel = document.getElementById('turma');
+  const trimestreSel = document.getElementById('trimestre');
+
+  const numero_ata = document.getElementById('numero_ata');
+  const data_reuniao = document.getElementById('data_reuniao');
+  const horario_inicio = document.getElementById('horario_inicio');
+  const horario_fim = document.getElementById('horario_fim');
+  const presidente = document.getElementById('presidente');
+  const participantes = document.getElementById('participantes');
+  const email = document.getElementById('email');
+
+  const btnAdd = document.getElementById('btnAdd');
+  const btnList = document.getElementById('btnList');
+  const btnReset = document.getElementById('btnReset');
+  const btnFinalize = document.getElementById('btnFinalize');
+
+  const queueList = document.getElementById('queueList');
+
+  const progressBar = document.getElementById('progressBar');
+  const progressFill = document.getElementById('progressFill');
+  const statusMessage = document.getElementById('statusMessage');
+
+  const btnPreview = document.getElementById('btnPreview');
+  const btnAtualizarPreview = document.getElementById('btnAtualizarPreview');
+  const editorPane = document.getElementById('editorPane');
+  const textoEditado = document.getElementById('textoEditado');
+  const previewFormatado = document.getElementById('previewFormatado');
+  const participantesHidden = document.getElementById('participantes');
+  const participantesBox = document.getElementById('participantesBox');
+  const filtroParticipantes = document.getElementById('filtroParticipantes');
+  const btnRecarregarPart = document.getElementById('btnRecarregarPart');
+  const btnSelecionarTodos = document.getElementById('btnSelecionarTodos');
+  const btnLimparSelecao = document.getElementById('btnLimparSelecao');
+
+  let PARTICIPANTES_LISTA = [];   // lista original vinda do Excel
+  let PARTICIPANTES_VIEW = [];    // lista filtrada atualmente visível
+
+
+  // data padrão
+  data_reuniao.value = new Date().toISOString().split('T')[0];
+
+  // ---------- helpers ----------
+  function renderParticipantes(list) {
+    participantesBox.innerHTML = '';
+    if (!list || !list.length) {
+      participantesBox.innerHTML = '<em>Nenhum participante encontrado.</em>';
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    list.forEach((nome, idx) => {
+      const id = `pchk_${idx}_${nome.replace(/\W+/g,'_')}`;
+
+      const wrap = document.createElement('div');
+      wrap.className = 'part-item';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = id;
+      cb.value = nome;
+
+      const lab = document.createElement('label');
+      lab.htmlFor = id;
+      lab.textContent = nome;
+
+      wrap.appendChild(cb);
+      wrap.appendChild(lab);
+      frag.appendChild(wrap);
+    });
+    participantesBox.appendChild(frag);
+  }
+
+
+  function atualizarHiddenParticipantes() {
+    const marcados = [...participantesBox.querySelectorAll('input[type="checkbox"]:checked')].map(cb => cb.value);
+    // back-end espera "um por linha"
+    participantesHidden.value = marcados.join('\n');
+  }
+
+  function aplicarFiltroParticipantes() {
+    const q = (filtroParticipantes.value || '').toLowerCase();
+    if (!q) {
+      PARTICIPANTES_VIEW = [...PARTICIPANTES_LISTA];
+    } else {
+      PARTICIPANTES_VIEW = PARTICIPANTES_LISTA.filter(n => n.toLowerCase().includes(q));
+    }
+    renderParticipantes(PARTICIPANTES_VIEW);
+  }
+
+  async function carregarParticipantes(force=false) {
+    try {
+      participantesBox.innerHTML = '<em>Carregando participantes do Excel...</em>';
+      const resp = await fetch(`/participants${force ? '?force=1':''}`);
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error || 'Falha ao obter participantes');
+      PARTICIPANTES_LISTA = data.participants || [];
+      PARTICIPANTES_VIEW = [...PARTICIPANTES_LISTA];
+      renderParticipantes(PARTICIPANTES_VIEW);
+    } catch (e) {
+      participantesBox.innerHTML = `<span style="color:#dc3545;">Erro: ${e.message}</span>`;
+    }
+  }
+
+  function showStatus(message, type) {
+    statusMessage.textContent = message;
+    statusMessage.className = `status-message status-${type}`;
+    statusMessage.style.display = 'block';
+    if (type === 'success' || type === 'error') {
+      setTimeout(() => statusMessage.style.display = 'none', 6000);
+    }
+  }
+  function setProgress(active) {
+    progressBar.style.display = active ? 'block' : 'none';
+    progressFill.style.width = active ? '60%' : '0%';
+  }
+  function populateSelect(select, values, {placeholder='Selecione...'}={}) {
+    select.innerHTML = '';
+    const ph = document.createElement('option');
+    ph.value = ''; ph.textContent = placeholder; ph.disabled = true; ph.selected = true;
+    select.appendChild(ph);
+    (values || []).forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v; opt.textContent = v;
+      select.appendChild(opt);
+    });
+  }
+  function lockFilters(locked) {
+    [anoSel, turnoSel, turmaSel, trimestreSel].forEach(el => el.disabled = locked);
+  }
+  function collectComposePayload() {
+    return {
+      ano: (anoSel.value || '').trim(),
+      turno: (turnoSel.value || '').trim(),
+      turma: (turmaSel.value || '').trim(),
+      trimestre: (trimestreSel.value || '').trim(),
+      numero_ata: (numero_ata.value || '').trim(),
+      data_reuniao: (data_reuniao.value || '').trim(),
+      horario_inicio: (horario_inicio.value || '').trim(),
+      horario_fim: (horario_fim.value || '').trim(),
+      presidente: (presidente.value || '').trim(),
+      participantes: (participantes.value || '').trim()
+    };
+  }
+
+  // ---------- opções da Supabase ----------
+  async function checkHealth() {
+    const banner = document.getElementById('connBanner');
+    try {
+      const resp = await fetch('/health');
+      const data = await resp.json();
+
+      if (data.success && data.status === 'ok') {
+        banner.style.display = 'block';
+        banner.style.background = '#e6ffed';
+        banner.style.border = '1px solid #b7eb8f';
+        banner.innerHTML = `
+          <strong>✔ Conectado!</strong><br/>
+          Distintos — Anos: ${data.counts.anos}, Turnos: ${data.counts.turnos}, Turmas: ${data.counts.turmas}, Trimestres: ${data.counts.trimestres}
+        `;
+      } else {
+        banner.style.display = 'block';
+        banner.style.background = '#fff2f0';
+        banner.style.border = '1px solid #ffccc7';
+        banner.innerHTML = `
+          <strong>✖ Falha na conexão</strong><br/>
+          ${data.error ? ('Erro: ' + data.error) : 'Verifique .env e tabela.'}<br/>
+          URL set: ${data.env_configured?.SUPABASE_URL_set ? 'sim' : 'não'} — KEY set: ${data.env_configured?.SUPABASE_KEY_set ? 'sim' : 'não'}
+        `;
+      }
+    } catch (e) {
+      banner.style.display = 'block';
+      banner.style.background = '#fff2f0';
+      banner.style.border = '1px solid #ffccc7';
+      banner.innerHTML = `<strong>Erro ao consultar /health:</strong> ${e.message}`;
+    }
+  }
+
+  // no onload, antes de initFilters():
+  checkHealth().then(() => initFilters()).catch(() => initFilters());
+
+
+  // Convenção do back: GET /options sem params => { anos, turnos } globais
+  // GET /options?ano=&turno= => { turmas, trimestres } filtrados
+  async function loadGlobalOptions() {
+    const resp = await fetch('/options');
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error || 'Falha ao carregar opções');
+
+    // anos e turnos globais
+    populateSelect(anoSel, (data.anos || []), {placeholder:'Ano'});
+    populateSelect(turnoSel, (data.turnos || []), {placeholder:'Turno'});
+
+    // limpa dependentes
+    populateSelect(turmaSel, [], {placeholder:'Turma'});
+    populateSelect(trimestreSel, [], {placeholder:'Trimestre'});
+  }
+
+  async function loadDependentOptions() {
+    const params = new URLSearchParams();
+    if (anoSel.value) params.append('ano', anoSel.value);
+    if (turnoSel.value) params.append('turno', turnoSel.value);
+
+    const resp = await fetch(`/options?${params.toString()}`);
+    const data = await resp.json();
+    if (!data.success) throw new Error(data.error || 'Falha ao carregar filtros');
+
+    populateSelect(turmaSel, (data.turmas || []), {placeholder:'Turma'});
+    populateSelect(trimestreSel, (data.trimestres || []).map(x => String(x)), {placeholder:'Trimestre'});
+  }
+
+  async function initFilters() {
+    try {
+      lockFilters(true);
+      setProgress(true);
+      await loadGlobalOptions();              // 1) carrega anos/turnos logo ao abrir
+      showStatus('Opções carregadas da Supabase.', 'info');
+    } catch (e) {
+      showStatus('Erro ao carregar opções: ' + e.message, 'error');
+    } finally {
+      lockFilters(false);
+      setProgress(false);
+    }
+  }
+  participantesBox.addEventListener('change', (e) => {
+    if (e.target && e.target.type === 'checkbox') {
+      atualizarHiddenParticipantes();
+    }
+  });
+
+  filtroParticipantes.addEventListener('input', () => {
+    aplicarFiltroParticipantes();
+    // ao re-render, precisamos manter o hidden coerente
+    atualizarHiddenParticipantes();
+  });
+
+  btnRecarregarPart.addEventListener('click', async () => {
+    await carregarParticipantes(true);
+    atualizarHiddenParticipantes();
+    showStatus('Participantes recarregados do Excel.', 'info');
+  });
+
+  btnSelecionarTodos.addEventListener('click', () => {
+    participantesBox.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = true);
+    atualizarHiddenParticipantes();
+  });
+
+  btnLimparSelecao.addEventListener('click', () => {
+    participantesBox.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+    atualizarHiddenParticipantes();
+  });
+
+  anoSel.addEventListener('change', async () => {
+    // ao escolher ano, carregamos turmas/trimestres
+    if (!anoSel.value) return;
+    try {
+      lockFilters(true);
+      await loadDependentOptions();
+    } catch (e) {
+      showStatus('Erro ao carregar turmas/trimestres: ' + e.message, 'error');
+    } finally {
+      lockFilters(false);
+    }
+  });
+
+  turnoSel.addEventListener('change', async () => {
+    if (!turnoSel.value) return;
+    try {
+      lockFilters(true);
+      await loadDependentOptions();
+    } catch (e) {
+      showStatus('Erro ao carregar turmas/trimestres: ' + e.message, 'error');
+    } finally {
+      lockFilters(false);
+    }
+  });
+
+  // ---------- fila ----------
+  async function refreshQueue() {
+    try {
+      const resp = await fetch('/list_queue');
+      const data = await resp.json();
+      queueList.innerHTML = '';
+      if (data.success && data.queue.length) {
+        data.queue.forEach(n => {
+          const li = document.createElement('li');
+          li.textContent = n;
+          queueList.appendChild(li);
+        });
+      } else {
+        queueList.innerHTML = '<li>(vazia)</li>';
+      }
+    } catch (e) {
+      showStatus('Não foi possível listar a fila: ' + e.message, 'error');
+    }
+  }
+  btnList.addEventListener('click', refreshQueue);
+
+  btnReset.addEventListener('click', async () => {
+    try {
+      const resp = await fetch('/reset_queue', { method: 'POST' });
+      const data = await resp.json();
+      if (data.success) {
+        await refreshQueue();
+        showStatus('Fila limpa.', 'success');
+      } else {
+        showStatus('Não foi possível limpar a fila.', 'error');
+      }
+    } catch (e) {
+      showStatus('Erro ao limpar a fila: ' + e.message, 'error');
+    }
+  });
+
+  // ---------- pré-visualização ----------
+  btnPreview.addEventListener('click', async () => {
+    const required = [anoSel, turnoSel, turmaSel, trimestreSel, numero_ata, data_reuniao, horario_inicio, horario_fim, presidente, participantes];
+    for (const el of required) {
+      if (!el.value || !el.value.trim()) {
+        showStatus('Preencha todos os campos e filtros antes de pré-visualizar.', 'error');
+        return;
+      }
+    }
+    try {
+      setProgress(true);
+      const resp = await fetch('/compose_text', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(collectComposePayload())
+      });
+      const data = await resp.json();
+      if (!data.success) {
+        showStatus(data.error || 'Erro ao compor texto', 'error');
+        return;
+      }
+      textoEditado.value = data.texto || '';
+      previewFormatado.innerHTML = (data.texto || '').replaceAll('\n', '<br/>');
+      editorPane.style.display = 'block';
+      btnAtualizarPreview.style.display = 'inline-block';
+      showStatus('Pré-visualização gerada. Edite se necessário e adicione à fila.', 'info');
+    } catch (e) {
+      showStatus('Erro ao gerar pré-visualização: ' + e.message, 'error');
+    } finally {
+      setProgress(false);
+    }
+  });
+
+  btnAtualizarPreview.addEventListener('click', () => {
+    previewFormatado.innerHTML = (textoEditado.value || '').replaceAll('\n', '<br/>');
+  });
+
+  // ---------- adicionar à fila ----------
+  btnAdd.addEventListener('click', async () => {
+    const required = [anoSel, turnoSel, turmaSel, trimestreSel, numero_ata, data_reuniao, horario_inicio, horario_fim, presidente, participantes, email];
+    for (const el of required) {
+      if (!el.value || !el.value.trim()) {
+        showStatus('Preencha todos os campos e filtros.', 'error');
+        return;
+      }
+    }
+
+    const fd = new FormData();
+    Object.entries(collectComposePayload()).forEach(([k,v]) => fd.append(k, v));
+    if (editorPane.style.display !== 'none' && (textoEditado.value || '').trim()) {
+      fd.append('texto_editado', textoEditado.value.trim());
+    }
+
+    try {
+      setProgress(true);
+      const resp = await fetch('/queue_ata', { method: 'POST', body: fd });
+      const data = await resp.json();
+      if (data.success) {
+        showStatus('Ata adicionada à fila!', 'success');
+        await refreshQueue();
+      } else {
+        showStatus(data.error || 'Falha ao adicionar à fila.', 'error');
+      }
+    } catch (e) {
+      showStatus('Erro ao adicionar à fila: ' + e.message, 'error');
+    } finally {
+      setProgress(false);
+    }
+  });
+
+  // ---------- finalizar ----------
+  btnFinalize.addEventListener('click', async () => {
+    if (!email.value || !email.value.trim()) {
+      showStatus('Informe um e-mail válido.', 'error'); return;
+    }
+    try {
+      setProgress(true);
+      const fd = new FormData();
+      fd.append('email', email.value.trim());
+      const resp = await fetch('/finalize_and_send', { method: 'POST', body: fd });
+      const data = await resp.json();
+      if (data.success) {
+        let msg = data.message;
+        if (data.download_url) msg += ` — Baixe o ZIP aqui: ${data.download_url}`;
+        showStatus(msg, 'success');
+      } else {
+        showStatus(data.error || 'Falha ao finalizar envio.', 'error');
+      }
+    } catch (e) {
+      showStatus('Erro ao finalizar: ' + e.message, 'error');
+    } finally {
+      setProgress(false);
+    }
+  });
+
+  // init
+  initFilters().then(() => refreshQueue()).catch(()=>{});
+});
+</script>
+
+
+</body>
+</html>
