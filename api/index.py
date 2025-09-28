@@ -1,6 +1,6 @@
 # api/index.py
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, PlainTextResponse
 from pathlib import Path
 import tempfile
 from app import (
