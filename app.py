@@ -31,11 +31,6 @@ async def on_error(request: Request, exc: Exception):
     print("SERVERLESS ERROR:", tb)
     return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
 
-@app.get("/api/health")
-def health():
-    ok, details = core_self_check(ROOT)
-    status = 200 if ok else 500
-    return JSONResponse({"ok": ok, "details": details}, status_code=status)
 
 @app.get("/")
 def home():
