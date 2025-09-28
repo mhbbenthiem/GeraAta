@@ -14,7 +14,7 @@ from supabase import create_client, Client
 
 # api/index.py
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, PlainTextResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from pathlib import Path
 import tempfile, os, traceback
 
@@ -32,12 +32,13 @@ async def on_error(request: Request, exc: Exception):
     return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
 
 
+app = FastAPI()
+
 @app.get("/")
 def home():
-    html_path = PUBLIC / "HTML_ata.html"
-    if not html_path.exists():
-        return PlainTextResponse("HTML_ata.html não encontrado em /public", status_code=500)
-    return HTMLResponse(html_path.read_text(encoding="utf-8"))
+    # Em produção, /public vira /HTML_ata.html
+    return RedirectResponse(url="/HTML_ata.html", status_code=302)
+
 
 @app.get("/api/participants")
 def participants(force: bool = False):
