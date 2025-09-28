@@ -18,13 +18,6 @@ from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, PlainTex
 from pathlib import Path
 import tempfile, os, traceback
 
-from gerar_ata_core import (
-    load_participantes_from_xlsx,
-    get_df_for_filters,
-    compose_text_core,
-    create_pdf,
-    core_self_check,   # NEW: checagem de env/arquivos
-)
 
 app = FastAPI()
 ROOT = Path(__file__).resolve().parents[1]
