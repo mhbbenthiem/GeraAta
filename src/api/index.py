@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
 from pathlib import Path
 import tempfile, traceback
 
-from src.api.gerar_ata_core import (
+from api.gerar_ata_core import (
     load_participantes_from_xlsx,
     get_df_for_filters,
     compose_text_core,
