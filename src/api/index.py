@@ -34,7 +34,7 @@ def home():
     return RedirectResponse("/HTML_ata.html", status_code=302)
 
 # --- HEALTH (formato que seu JS espera)
-@app.get("/health")
+@app.get("/")
 def health():
     root = Path(__file__).resolve().parents[1]  # 'src/'
     ok_overall, details = core_self_check(root)
