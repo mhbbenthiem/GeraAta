@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
 from pathlib import Path
 import tempfile, traceback
 
-from gerar_ata_core import (
+from src.api.gerar_ata_core import (
     load_participantes_from_xlsx,
     get_df_for_filters,
     compose_text_core,
@@ -23,17 +23,17 @@ async def on_error(request: Request, exc: Exception):
 def home():
     return RedirectResponse("/HTML_ata.html", status_code=302)
 
-@app.get("/src/health")
+@app.get("/api/health")
 def health():
     root = Path(__file__).resolve().parents[1]
     ok, details = core_self_check(root)
     return JSONResponse({"ok": ok, "details": details}, status_code=200 if ok else 500)
 
-@app.get("/src/participants")
+@app.get("/api/participants")
 def participants(force: bool = False):
     return JSONResponse({"success": True, "participants": load_participantes_from_xlsx(force)})
 
-@app.post("/src/compose_text")
+@app.post("/api/compose_text")
 async def compose_text(request: Request):
     p = await request.json()
     required = ["ano","turno","turma","trimestre","numero_ata","data_reuniao","horario_inicio","horario_fim","presidente","participantes"]
@@ -54,7 +54,7 @@ async def compose_text(request: Request):
     )
     return JSONResponse({"success": True, "texto": texto})
 
-@app.post("/src/generate_pdf")
+@app.post("/api/generate_pdf")
 async def generate_pdf(request: Request):
     p = await request.json()
     required = ["ano","turno","turma","trimestre","numero_ata","data_reuniao","horario_inicio","horario_fim","presidente","participantes"]
