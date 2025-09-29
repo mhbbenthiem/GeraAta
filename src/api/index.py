@@ -1,17 +1,26 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
 from pathlib import Path
 import tempfile, traceback
 
-from api.gerar_ata_core import (
+from gerar_ata_core import (
     load_participantes_from_xlsx,
     get_df_for_filters,
     compose_text_core,
     create_pdf,
     core_self_check,
+    supabase_ping,
+    get_global_options,
+    get_dependent_options,
+    get_counts_summary,
 )
 
 app = FastAPI()
+
+# --- util / erros
+@app.get("/api/ping")
+def ping():
+    return {"pong": True}
 
 @app.exception_handler(Exception)
 async def on_error(request: Request, exc: Exception):
@@ -19,20 +28,54 @@ async def on_error(request: Request, exc: Exception):
     print("SERVERLESS ERROR:", tb)
     return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
 
+# --- Home -> estático
 @app.get("/")
 def home():
     return RedirectResponse("/HTML_ata.html", status_code=302)
 
+# --- HEALTH (formato que seu JS espera)
 @app.get("/api/health")
 def health():
-    root = Path(__file__).resolve().parents[1]
-    ok, details = core_self_check(root)
-    return JSONResponse({"ok": ok, "details": details}, status_code=200 if ok else 500)
+    root = Path(__file__).resolve().parents[1]  # 'src/'
+    ok_overall, details = core_self_check(root)
+    env_cfg = {
+        "SUPABASE_URL_set": bool(details.get("supabase_env")),
+        "SUPABASE_KEY_set": bool(details.get("supabase_env")),
+    }
+    # tenta ping supabase para enriquecer
+    sb_ok, sb_info = supabase_ping()
+    counts = get_counts_summary()
+    payload = {
+        "success": ok_overall,
+        "status": "ok" if ok_overall else "fail",
+        "counts": counts,
+        "env_configured": {
+            "SUPABASE_URL_set": env_cfg["SUPABASE_URL_set"],
+            "SUPABASE_KEY_set": env_cfg["SUPABASE_KEY_set"],
+        },
+        "supabase_ok": sb_ok,
+        "supabase_info": sb_info,
+    }
+    return JSONResponse(payload, status_code=200 if ok_overall else 500)
 
+# --- OPTIONS (globais e dependentes) — usado pelos selects do frontend
+@app.get("/api/options")
+def options(ano: str | None = None, turno: str | None = None):
+    try:
+        if ano or turno:
+            data = get_dependent_options(ano, turno)
+        else:
+            data = get_global_options()
+        return JSONResponse({"success": True, **data})
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+
+# --- PARTICIPANTES (já existia)
 @app.get("/api/participants")
 def participants(force: bool = False):
     return JSONResponse({"success": True, "participants": load_participantes_from_xlsx(force)})
 
+# --- COMPOSE TEXT (já existia)
 @app.post("/api/compose_text")
 async def compose_text(request: Request):
     p = await request.json()
@@ -54,6 +97,7 @@ async def compose_text(request: Request):
     )
     return JSONResponse({"success": True, "texto": texto})
 
+# --- GENERATE PDF (se quiser usar fora da fila)
 @app.post("/api/generate_pdf")
 async def generate_pdf(request: Request):
     p = await request.json()
@@ -79,3 +123,23 @@ async def generate_pdf(request: Request):
     with open(tmp_pdf, "wb") as f:
         f.write(pdf_buffer.read())
     return FileResponse(str(tmp_pdf), media_type="application/pdf", filename=tmp_pdf.name)
+
+# --- STUBS de FILA (para não quebrar a UI; em Vercel não há persistência)
+@app.get("/api/list_queue")
+def list_queue():
+    return JSONResponse({"success": True, "queue": []})
+
+@app.post("/api/reset_queue")
+def reset_queue():
+    return JSONResponse({"success": True})
+
+@app.post("/api/queue_ata")
+async def queue_ata(request: Request):
+    # Aceita e responde sucesso para manter o fluxo da UI
+    _ = await request.form()  # consumimos o body para não dar erro
+    return JSONResponse({"success": True, "queued": 1, "message": "Fila desativada em serverless; use 'Pré-visualizar' e 'Gerar PDF'."})
+
+@app.post("/api/finalize_and_send")
+async def finalize_and_send(request: Request):
+    _ = await request.form()
+    return JSONResponse({"success": True, "message": "Envio/fila desativados no serverless. Gere e baixe o PDF pelo botão."})

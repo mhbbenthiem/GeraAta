@@ -318,3 +318,78 @@ def core_self_check(root_dir: Path):
     details["has_dados_xlsx"] = xlsx.exists()
     ok = details["has_objetivos_json"] or details["has_dados_xlsx"] or details["has_supabase_env"]
     return ok, details
+
+# ---------- DATAFRAME UTIL ----------
+
+def load_all_df() -> pd.DataFrame:
+    """Carrega todo o dataset (Supabase se disponível; caso contrário, Excel local)."""
+    try:
+        if _env_has_supabase():
+            df = fetch_supabase_df(ano=None, turno=None, turma=None, trimestre=None)
+        else:
+            # usa o mesmo fallback local do get_df_for_filters
+            df = fetch_local_df(None, None, None, None)
+        return df if isinstance(df, pd.DataFrame) else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+def _distinct_sorted(series) -> list:
+    vals = (
+        series.astype(str)
+        .map(lambda s: s.strip())
+        .replace({"": None})
+        .dropna()
+        .unique()
+        .tolist()
+    )
+    try:
+        # tenta ordenar numericamente se fizer sentido
+        as_int = [int(str(x)) for x in vals]
+        return [str(x) for x in sorted(as_int)]
+    except Exception:
+        return sorted(vals, key=lambda x: x.casefold())
+
+def get_global_options() -> dict:
+    """
+    Retorna anos e turnos globais (para popular selects iniciais).
+    """
+    df = load_all_df()
+    if df.empty:
+        return {"anos": [], "turnos": []}
+    anos = _distinct_sorted(df.get(COLUMN_MAP["ano"], pd.Series(dtype=str)))
+    turnos = _distinct_sorted(df.get(COLUMN_MAP["turno"], pd.Series(dtype=str)))
+    return {"anos": anos, "turnos": turnos}
+
+def get_dependent_options(ano: str | None, turno: str | None) -> dict:
+    """
+    Dado ano/turno, retorna turmas e trimestres disponíveis.
+    """
+    df = load_all_df()
+    if df.empty:
+        return {"turmas": [], "trimestres": []}
+    if ano:
+        df = df[df[COLUMN_MAP["ano"]].astype(str).str.casefold()==str(ano).strip().casefold()]
+    if turno:
+        df = df[df[COLUMN_MAP["turno"]].astype(str).str.casefold()==str(turno).strip().casefold()]
+    turmas = _distinct_sorted(df.get(COLUMN_MAP["turma"], pd.Series(dtype=str)))
+    trimestres = _distinct_sorted(df.get(COLUMN_MAP["trimestre"], pd.Series(dtype=str)))
+    # normaliza trimestres como inteiros quando possível
+    try:
+        trimestres = sorted({int(str(x)) for x in trimestres})
+    except Exception:
+        pass
+    return {"turmas": turmas, "trimestres": trimestres}
+
+def get_counts_summary() -> dict:
+    """
+    Resume contagens distintas (anos, turnos, turmas, trimestres) para /api/health.
+    """
+    df = load_all_df()
+    if df.empty:
+        return {"anos": 0, "turnos": 0, "turmas": 0, "trimestres": 0}
+    return {
+        "anos": df[COLUMN_MAP["ano"]].astype(str).str.strip().nunique() if COLUMN_MAP["ano"] in df else 0,
+        "turnos": df[COLUMN_MAP["turno"]].astype(str).str.strip().nunique() if COLUMN_MAP["turno"] in df else 0,
+        "turmas": df[COLUMN_MAP["turma"]].astype(str).str.strip().nunique() if COLUMN_MAP["turma"] in df else 0,
+        "trimestres": df[COLUMN_MAP["trimestre"]].astype(str).str.strip().nunique() if COLUMN_MAP["trimestre"] in df else 0,
+    }
