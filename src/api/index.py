@@ -18,7 +18,7 @@ from gerar_ata_core import (
 app = FastAPI()
 
 # --- util / erros
-@app.get("/api/ping")
+@app.get("/ping")
 def ping():
     return {"pong": True}
 
@@ -34,7 +34,7 @@ def home():
     return RedirectResponse("/HTML_ata.html", status_code=302)
 
 # --- HEALTH (formato que seu JS espera)
-@app.get("/api/health")
+@app.get("/health")
 def health():
     root = Path(__file__).resolve().parents[1]  # 'src/'
     ok_overall, details = core_self_check(root)
@@ -59,7 +59,7 @@ def health():
     return JSONResponse(payload, status_code=200 if ok_overall else 500)
 
 # --- OPTIONS (globais e dependentes) — usado pelos selects do frontend
-@app.get("/api/options")
+@app.get("/options")
 def options(ano: str | None = None, turno: str | None = None):
     try:
         if ano or turno:
@@ -71,12 +71,12 @@ def options(ano: str | None = None, turno: str | None = None):
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
 # --- PARTICIPANTES (já existia)
-@app.get("/api/participants")
+@app.get("/participants")
 def participants(force: bool = False):
     return JSONResponse({"success": True, "participants": load_participantes_from_xlsx(force)})
 
 # --- COMPOSE TEXT (já existia)
-@app.post("/api/compose_text")
+@app.post("/compose_text")
 async def compose_text(request: Request):
     p = await request.json()
     required = ["ano","turno","turma","trimestre","numero_ata","data_reuniao","horario_inicio","horario_fim","presidente","participantes"]
@@ -98,7 +98,7 @@ async def compose_text(request: Request):
     return JSONResponse({"success": True, "texto": texto})
 
 # --- GENERATE PDF (se quiser usar fora da fila)
-@app.post("/api/generate_pdf")
+@app.post("/generate_pdf")
 async def generate_pdf(request: Request):
     p = await request.json()
     required = ["ano","turno","turma","trimestre","numero_ata","data_reuniao","horario_inicio","horario_fim","presidente","participantes"]
@@ -125,21 +125,21 @@ async def generate_pdf(request: Request):
     return FileResponse(str(tmp_pdf), media_type="application/pdf", filename=tmp_pdf.name)
 
 # --- STUBS de FILA (para não quebrar a UI; em Vercel não há persistência)
-@app.get("/api/list_queue")
+@app.get("/list_queue")
 def list_queue():
     return JSONResponse({"success": True, "queue": []})
 
-@app.post("/api/reset_queue")
+@app.post("/reset_queue")
 def reset_queue():
     return JSONResponse({"success": True})
 
-@app.post("/api/queue_ata")
+@app.post("/queue_ata")
 async def queue_ata(request: Request):
     # Aceita e responde sucesso para manter o fluxo da UI
     _ = await request.form()  # consumimos o body para não dar erro
     return JSONResponse({"success": True, "queued": 1, "message": "Fila desativada em serverless; use 'Pré-visualizar' e 'Gerar PDF'."})
 
-@app.post("/api/finalize_and_send")
+@app.post("/finalize_and_send")
 async def finalize_and_send(request: Request):
     _ = await request.form()
     return JSONResponse({"success": True, "message": "Envio/fila desativados no serverless. Gere e baixe o PDF pelo botão."})
