@@ -1,99 +1,25 @@
-# gerar_ata_core.py
 from pathlib import Path
 import os, io, re, json
 from datetime import datetime
 import pandas as pd
+
+# ReportLab (PDF)
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
-from supabase import create_client, Client
 
-
-
-# api/index.py
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
-from pathlib import Path
-import tempfile, os, traceback
-
-
-app = FastAPI()
-ROOT = Path(__file__).resolve().parents[1]
-PUBLIC = ROOT / "public"
-
-# --- middlewares simples de erro/JSON
-@app.exception_handler(Exception)
-async def on_error(request: Request, exc: Exception):
-    # Mostra erro útil pro cliente e escreve log completo
-    tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-    print("SERVERLESS ERROR:", tb)
-    return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
-
-
-app = FastAPI()
-
-@app.get("/")
-def home():
-    # Em produção, /public vira /HTML_ata.html
-    return RedirectResponse(url="/HTML_ata.html", status_code=302)
-
-
-@app.get("/api/participants")
-def participants(force: bool = False):
-    return JSONResponse({"success": True, "participants": load_participantes_from_xlsx(force)})
-
-@app.post("/api/compose_text")
-async def compose_text(request: Request):
-    p = await request.json()
-    required = ["ano","turno","turma","trimestre","numero_ata","data_reuniao","horario_inicio","horario_fim","presidente","participantes"]
-    faltando = [k for k in required if not str(p.get(k,"")).strip()]
-    if faltando:
-        return JSONResponse({"success": False, "error": f"Campos obrigatórios ausentes: {', '.join(faltando)}"}, status_code=400)
-
-    df_filt, column_map, df_base_tri = get_df_for_filters(p["ano"], p["turno"], p["turma"], p["trimestre"])
-    if df_filt.empty:
-        return JSONResponse({"success": False, "error": "Nenhum dado encontrado para os filtros."}, status_code=404)
-
-    texto = compose_text_core(
-        df_filt=df_filt, df_base_tri=df_base_tri, column_map=column_map,
-        numero_ata=p["numero_ata"], data_reuniao=p["data_reuniao"],
-        horario_inicio=p["horario_inicio"], horario_fim=p["horario_fim"],
-        presidente=p["presidente"], participantes=p["participantes"],
-        ano=p["ano"], turma=p["turma"], turno=p["turno"], trimestre=p["trimestre"],
-    )
-    return JSONResponse({"success": True, "texto": texto})
-
-@app.post("/api/generate_pdf")
-async def generate_pdf(request: Request):
-    p = await request.json()
-    required = ["ano","turno","turma","trimestre","numero_ata","data_reuniao","horario_inicio","horario_fim","presidente","participantes"]
-    faltando = [k for k in required if not str(p.get(k,"")).strip()]
-    if faltando:
-        return JSONResponse({"success": False, "error": f"Campos obrigatórios ausentes: {', '.join(faltando)}"}, status_code=400)
-
-    df_filt, column_map, df_base_tri = get_df_for_filters(p["ano"], p["turno"], p["turma"], p["trimestre"])
-    if df_filt.empty:
-        return JSONResponse({"success": False, "error": "Nenhum dado encontrado para os filtros."}, status_code=404)
-
-    pdf_buffer = create_pdf(
-        data=df_filt,
-        numero_ata=p["numero_ata"], data_reuniao=p["data_reuniao"],
-        horario_inicio=p["horario_inicio"], horario_fim=p["horario_fim"],
-        presidente=p["presidente"], participantes=p["participantes"],
-        ano=p["ano"], turma=p["turma"], turno=p["turno"], trimestre=p["trimestre"],
-        override_text=p.get("texto_editado"),
-        df_base_tri=df_base_tri, column_map=column_map,
-    )
-    tmp_pdf = Path(tempfile.gettempdir()) / f"ATA_{p['numero_ata']}.pdf"
-    with open(tmp_pdf, "wb") as f:
-        f.write(pdf_buffer.read())
-    return FileResponse(str(tmp_pdf), media_type="application/pdf", filename=tmp_pdf.name)
+# Supabase (opcional)
+try:
+    from supabase import create_client, Client
+except Exception:  # deixa rodar mesmo sem lib instalada
+    create_client = None
+    class Client: ...
+    pass
 
 # ---------- PATHS ----------
 BASE_DIR = Path(__file__).resolve().parent
-PUBLIC_DIR = BASE_DIR.parent / "public"
 OBJETIVOS_JSON = os.getenv("OBJETIVOS_JSON", str(BASE_DIR / "data" / "objetivos.json"))
 PARTICIPANTES_XLSX_PATH = Path(os.getenv("PARTICIPANTES_XLSX_PATH", BASE_DIR / "data" / "dados.xlsx"))
 PARTICIPANTES_SHEET = os.getenv("PARTICIPANTES_SHEET", "profs")
@@ -108,10 +34,10 @@ COLUMN_MAP = {
     "ano": "ano",
     "turno": "turno",
     "turma": "turma",
-    "trimestre": "trimestre",        # integer
+    "trimestre": "trimestre",
     "aluno": "aluno",
     "materia": "materia",
-    "descricao": "descricao",        # string (não lista)
+    "descricao": "descricao",
     "papi": "papi",
     "inclusao": "inclusao",
     "perfil_turma": "perfilturma",
@@ -126,18 +52,22 @@ def _get_env():
         os.getenv("SUPABASE_SCHEMA","public"),
     )
 
-def get_supabase() -> Client:
-    global _supabase_client
+def _env_has_supabase():
     url, key, *_ = _get_env()
-    if not url or not key:
-        raise RuntimeError("Defina SUPABASE_URL e SUPABASE_KEY")
+    return bool(url) and bool(key) and create_client is not None
+
+def get_supabase() -> Client:
+    if not _env_has_supabase():
+        raise RuntimeError("SUPABASE_URL/KEY não definidos ou pacote supabase ausente.")
+    global _supabase_client
     if _supabase_client is None:
+        url, key, *_ = _get_env()
         _supabase_client = create_client(url, key)
     return _supabase_client
 
 def fetch_supabase_df(ano=None, turno=None, turma=None, trimestre=None) -> pd.DataFrame:
     sb = get_supabase()
-    url, key, table, schema = _get_env()
+    _, _, table, schema = _get_env()
     q = sb.schema(schema).table(table).select("*")
     if ano not in (None, ""): q = q.eq("ano", str(ano))
     if turno not in (None, ""): q = q.eq("turno", str(turno))
@@ -148,12 +78,32 @@ def fetch_supabase_df(ano=None, turno=None, turma=None, trimestre=None) -> pd.Da
     resp = q.execute()
     return pd.DataFrame(resp.data or [])
 
+def fetch_local_df(ano=None, turno=None, turma=None, trimestre=None) -> pd.DataFrame:
+    path = PARTICIPANTES_XLSX_PATH.parent / "dados.xlsx"
+    if not path.exists():
+        return pd.DataFrame()
+    df = pd.read_excel(path, engine="openpyxl")
+    # filtros simples
+    def _eq(col, val):
+        return df[col].astype(str).str.strip().str.casefold() == str(val).strip().casefold()
+    if "ano" in df.columns and ano not in (None, ""): df = df[_eq("ano", ano)]
+    if "turno" in df.columns and turno not in (None, ""): df = df[_eq("turno", turno)]
+    if "turma" in df.columns and turma not in (None, ""): df = df[_eq("turma", turma)]
+    if "trimestre" in df.columns and trimestre not in (None, ""):
+        df = df[df["trimestre"].astype(str).str.contains(str(trimestre))]
+    return df
+
 def get_df_for_filters(ano, turno, turma, trimestre):
-    df_filt = fetch_supabase_df(ano=ano, turno=turno, turma=turma, trimestre=trimestre)
-    if df_filt.empty:
-        return df_filt, COLUMN_MAP, df_filt
-    # base ampla do mesmo trimestre para “Integral”
-    df_base_tri = fetch_supabase_df(ano=None, turno=None, turma=None, trimestre=trimestre)
+    if _env_has_supabase():
+        try:
+            df_filt = fetch_supabase_df(ano=ano, turno=turno, turma=turma, trimestre=trimestre)
+            df_base_tri = fetch_supabase_df(ano=None, turno=None, turma=None, trimestre=trimestre)
+        except Exception:
+            df_filt = fetch_local_df(ano, turno, turma, trimestre)
+            df_base_tri = fetch_local_df(None, None, None, trimestre)
+    else:
+        df_filt = fetch_local_df(ano, turno, turma, trimestre)
+        df_base_tri = fetch_local_df(None, None, None, trimestre)
     return df_filt, COLUMN_MAP, df_base_tri
 
 # ---------- PARTICIPANTES ----------
@@ -249,13 +199,11 @@ def objetivos_para_texto(ano:str, trimestre:str)->str:
 # ---------- INTEGRAL / AGRUPAÇÃO ----------
 def filtra_integral_df(df_base_tri: pd.DataFrame, column_map: dict, ano_num:int, trimestre)->pd.DataFrame:
     df = df_base_tri.copy()
-    tri_col = column_map["trimestre"]; ano_col = column_map["ano"]
-    # Mantém mesmo trimestre; ano = “Integral” ou igual ao do filtro
+    tri_col = column_map["trimestre"]
     def _to_int(x):
         try: return int(str(x).strip())
         except: return None
-    df = df[df[tri_col].map(_to_int) == _to_int(trimestre)]
-    return df
+    return df[df[tri_col].map(_to_int) == _to_int(trimestre)]
 
 def montar_partes_por_aluno(df_filt: pd.DataFrame, df_integral: pd.DataFrame, column_map: dict)->list[str]:
     alu_col = column_map["aluno"]; mat_col = column_map["materia"]; desc_col = column_map["descricao"]
@@ -332,13 +280,10 @@ def create_pdf(data: pd.DataFrame, numero_ata, data_reuniao, horario_inicio, hor
     story.append(Paragraph(titulo, title_style))
 
     participantes_lista = [p for p in str(participantes).split("\n") if p.strip()]
-    participantes_corridos = lista_para_texto(participantes_lista)
-
     if override_text and override_text.strip():
         texto = override_text.strip()
     else:
         if df_base_tri is None or column_map is None:
-            # fallback mínimo se não vierem de fora
             _, column_map, df_base_tri = get_df_for_filters(ano, turno, turma, trimestre)
         texto = compose_text_core(
             df_filt=data, df_base_tri=df_base_tri, column_map=column_map,
@@ -363,3 +308,13 @@ def create_pdf(data: pd.DataFrame, numero_ata, data_reuniao, horario_inicio, hor
     doc.build(story)
     buffer.seek(0)
     return buffer
+
+# ---------- SELF CHECK ----------
+def core_self_check(root_dir: Path):
+    details = {}
+    details["has_supabase_env"] = _env_has_supabase()
+    details["has_objetivos_json"] = os.path.isfile(OBJETIVOS_JSON)
+    xlsx = PARTICIPANTES_XLSX_PATH
+    details["has_dados_xlsx"] = xlsx.exists()
+    ok = details["has_objetivos_json"] or details["has_dados_xlsx"] or details["has_supabase_env"]
+    return ok, details

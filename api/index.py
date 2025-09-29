@@ -1,11 +1,9 @@
-# /api/index.py
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, FileResponse, RedirectResponse
 from pathlib import Path
 import tempfile, traceback
 
-# Se gerar_ata_core.py estiver na mesma pasta /api:
-from api.gerar_ata_core import (
+from gerar_ata_core import (
     load_participantes_from_xlsx,
     get_df_for_filters,
     compose_text_core,
@@ -15,14 +13,12 @@ from api.gerar_ata_core import (
 
 app = FastAPI()
 
-# --- erro global legível nos logs
 @app.exception_handler(Exception)
 async def on_error(request: Request, exc: Exception):
     tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
     print("SERVERLESS ERROR:", tb)
     return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
 
-# --- redireciona para o estático servido pelo Vercel (/public/HTML_ata.html -> /HTML_ata.html)
 @app.get("/")
 def home():
     return RedirectResponse("/HTML_ata.html", status_code=302)
@@ -79,7 +75,6 @@ async def generate_pdf(request: Request):
         override_text=p.get("texto_editado"),
         df_base_tri=df_base_tri, column_map=column_map,
     )
-
     tmp_pdf = Path(tempfile.gettempdir()) / f"ATA_{p['numero_ata']}.pdf"
     with open(tmp_pdf, "wb") as f:
         f.write(pdf_buffer.read())
