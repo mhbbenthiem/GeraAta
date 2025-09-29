@@ -23,17 +23,17 @@ async def on_error(request: Request, exc: Exception):
 def home():
     return RedirectResponse("/HTML_ata.html", status_code=302)
 
-@app.get("/api/health")
+@app.get("/src/health")
 def health():
     root = Path(__file__).resolve().parents[1]
     ok, details = core_self_check(root)
     return JSONResponse({"ok": ok, "details": details}, status_code=200 if ok else 500)
 
-@app.get("/api/participants")
+@app.get("/src/participants")
 def participants(force: bool = False):
     return JSONResponse({"success": True, "participants": load_participantes_from_xlsx(force)})
 
-@app.post("/api/compose_text")
+@app.post("/src/compose_text")
 async def compose_text(request: Request):
     p = await request.json()
     required = ["ano","turno","turma","trimestre","numero_ata","data_reuniao","horario_inicio","horario_fim","presidente","participantes"]
@@ -54,7 +54,7 @@ async def compose_text(request: Request):
     )
     return JSONResponse({"success": True, "texto": texto})
 
-@app.post("/api/generate_pdf")
+@app.post("/src/generate_pdf")
 async def generate_pdf(request: Request):
     p = await request.json()
     required = ["ano","turno","turma","trimestre","numero_ata","data_reuniao","horario_inicio","horario_fim","presidente","participantes"]
