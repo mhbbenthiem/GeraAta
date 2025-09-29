@@ -34,29 +34,25 @@ def home():
     return RedirectResponse("/HTML_ata.html", status_code=302)
 
 # --- HEALTH (formato que seu JS espera)
-@app.get("/")
+@app.get("/health")  
 def health():
     root = Path(__file__).resolve().parents[1]  # 'src/'
     ok_overall, details = core_self_check(root)
-    env_cfg = {
-        "SUPABASE_URL_set": bool(details.get("supabase_env")),
-        "SUPABASE_KEY_set": bool(details.get("supabase_env")),
-    }
-    # tenta ping supabase para enriquecer
     sb_ok, sb_info = supabase_ping()
-    counts = get_counts_summary()
     payload = {
         "success": ok_overall,
         "status": "ok" if ok_overall else "fail",
-        "counts": counts,
-        "env_configured": {
-            "SUPABASE_URL_set": env_cfg["SUPABASE_URL_set"],
-            "SUPABASE_KEY_set": env_cfg["SUPABASE_KEY_set"],
-        },
+        "counts": get_counts_summary(),
         "supabase_ok": sb_ok,
         "supabase_info": sb_info,
     }
     return JSONResponse(payload, status_code=200 if ok_overall else 500)
+
+@app.exception_handler(Exception)
+async def on_error(request: Request, exc: Exception):
+    tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+    print("SERVERLESS ERROR:", tb)
+    return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
 
 # --- OPTIONS (globais e dependentes) — usado pelos selects do frontend
 @app.get("/options")

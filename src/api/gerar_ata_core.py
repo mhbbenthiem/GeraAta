@@ -311,12 +311,35 @@ def create_pdf(data: pd.DataFrame, numero_ata, data_reuniao, horario_inicio, hor
 
 # ---------- SELF CHECK ----------
 def core_self_check(root_dir: Path):
+    """
+    root_dir esperado: pasta root do deploy (no seu caso, 'src/').
+    Retorna (ok, details) com chaves que o /health usa.
+    """
     details = {}
-    details["has_supabase_env"] = _env_has_supabase()
-    details["has_objetivos_json"] = os.path.isfile(OBJETIVOS_JSON)
-    xlsx = PARTICIPANTES_XLSX_PATH
-    details["has_dados_xlsx"] = xlsx.exists()
-    ok = details["has_objetivos_json"] or details["has_dados_xlsx"] or details["has_supabase_env"]
+
+    # Env Supabase
+    url_set = bool(os.getenv("SUPABASE_URL"))
+    key_set = bool(os.getenv("SUPABASE_KEY"))
+    details["supabase_env"] = url_set and key_set   # <- nome que o /health usa
+    details["SUPABASE_URL_set"] = url_set
+    details["SUPABASE_KEY_set"] = key_set
+
+    # Public (ajuda a depurar a home)
+    public = root_dir / "public"
+    details["public_html_ata_exists"] = (public / "HTML_ata.html").exists() or (public / "index.html").exists()
+
+    # Data (respeita ENV se definido; senão, usa src/data)
+    data_dir = root_dir / "data"
+    objetivos_path = Path(os.getenv("OBJETIVOS_JSON") or (data_dir / "objetivos.json"))
+    xlsx_path = Path(os.getenv("PARTICIPANTES_XLSX_PATH") or (data_dir / "dados.xlsx"))
+
+    details["objetivos_json_path"] = str(objetivos_path)
+    details["dados_xlsx_path"]     = str(xlsx_path)
+    details["objetivos_json_exists"] = objetivos_path.exists()
+    details["dados_xlsx_exists"]     = xlsx_path.exists()
+
+    # Sinal verde geral: supabase configurada OU temos algum dado local
+    ok = details["supabase_env"] or details["objetivos_json_exists"] or details["dados_xlsx_exists"]
     return ok, details
 
 # ---------- DATAFRAME UTIL ----------
