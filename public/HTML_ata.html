@@ -214,6 +214,7 @@ body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background: #434276
 <script>
 document.addEventListener('DOMContentLoaded', () => {
   // ---------- refs ----------
+  const API = '/api/index';
   const anoSel = document.getElementById('ano');
   const turnoSel = document.getElementById('turno');
   const turmaSel = document.getElementById('turma');
@@ -307,7 +308,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function carregarParticipantes(force=false) {
     try {
       participantesBox.innerHTML = '<em>Carregando participantes do Excel...</em>';
-      const resp = await fetch(`/api/participants${force ? '?force=1':''}`);
+      const resp = await fetch(`/api/index/participants${force ? '?force=1':''}`);
       const data = await resp.json();
       if (!data.success) throw new Error(data.error || 'Falha ao obter participantes');
       PARTICIPANTES_LISTA = data.participants || [];
@@ -363,7 +364,7 @@ document.addEventListener('DOMContentLoaded', () => {
   async function checkHealth() {
     const banner = document.getElementById('connBanner');
     try {
-      const resp = await fetch('/api/health');
+      const resp = await fetch('/api/index/health');
       const data = await resp.json();
 
       if (data.success && data.status === 'ok') {
@@ -399,7 +400,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Convenção do back: GET /options sem params => { anos, turnos } globais
   // GET /options?ano=&turno= => { turmas, trimestres } filtrados
   async function loadGlobalOptions() {
-    const resp = await fetch('/api/options');
+    const resp = await fetch('/api/index/options');
     const data = await resp.json();
     if (!data.success) throw new Error(data.error || 'Falha ao carregar opções');
 
@@ -494,7 +495,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // ---------- fila ----------
   async function refreshQueue() {
     try {
-      const resp = await fetch('/api/list_queue');
+      const resp = await fetch('/api/index/list_queue');
       const data = await resp.json();
       queueList.innerHTML = '';
       if (data.success && data.queue.length) {
@@ -514,7 +515,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   btnReset.addEventListener('click', async () => {
     try {
-      const resp = await fetch('/api/reset_queue', { method: 'POST' });
+      const resp = await fetch('/api/index/reset_queue', { method: 'POST' });
       const data = await resp.json();
       if (data.success) {
         await refreshQueue();
@@ -538,7 +539,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     try {
       setProgress(true);
-      const resp = await fetch('/api/compose_text', {
+      const resp = await fetch('/api/index/compose_text', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(collectComposePayload())
@@ -582,7 +583,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       setProgress(true);
-      const resp = await fetch('/api/queue_ata', { method: 'POST', body: fd });
+      const resp = await fetch('/api/index/queue_ata', { method: 'POST', body: fd });
       const data = await resp.json();
       if (data.success) {
         showStatus('Ata adicionada à fila!', 'success');
@@ -606,7 +607,7 @@ document.addEventListener('DOMContentLoaded', () => {
       setProgress(true);
       const fd = new FormData();
       fd.append('email', email.value.trim());
-      const resp = await fetch('/api/finalize_and_send', { method: 'POST', body: fd });
+      const resp = await fetch('/api/index/finalize_and_send', { method: 'POST', body: fd });
       const data = await resp.json();
       if (data.success) {
         let msg = data.message;
