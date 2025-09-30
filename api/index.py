@@ -13,21 +13,13 @@ if str(here) not in sys.path:
 import gerar_ata_core as core  # usa os nomes reais do arquivo
 
 app = FastAPI(title="GeraAta API (wired)")
-
 @app.get("/")
 def root():
-    return {"ok": True, "routes": ["/health","/options","/participants",
-                                   "/list_queue","/reset_queue",
-                                   "/compose_text","/queue_ata","/finalize_and_send"]}
+    return {"ok": True, "routes": ["/health"]}
 
 @app.get("/health")
 def health():
-    ok_env, info = core.supabase_ping()
-    counts = core.get_counts_summary()
-    return {"success": True, "status": "ok" if ok_env or any(counts.values()) else "degraded",
-            "env_configured": {"SUPABASE_URL_set": info["SUPABASE_URL_set"],
-                               "SUPABASE_KEY_set": info["SUPABASE_KEY_set"]},
-            "counts": counts}
+    return {"status": "ok"}
 
 @app.get("/options")
 def options(ano: str | None = None, turno: str | None = None):
