@@ -1,9 +1,7 @@
 fastapi
+pydantic
 uvicorn
-pandas
 reportlab
-python-dotenv
-supabase
+pandas
 openpyxl
-certifi
 supabase

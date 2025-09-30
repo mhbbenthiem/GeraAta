@@ -18,8 +18,15 @@ except Exception:  # deixa rodar mesmo sem lib instalada
     class Client: ...
     pass
 
+def supabase_ping():
+    # Faça um ping real se tiver SUPABASE_URL/KEY; por ora, retorne um status
+    ok = bool(os.getenv("SUPABASE_URL")) and bool(os.getenv("SUPABASE_KEY"))
+    info = {"SUPABASE_URL_set": bool(os.getenv("SUPABASE_URL")),
+            "SUPABASE_KEY_set": bool(os.getenv("SUPABASE_KEY"))}
+    return ok, info
+
 # ---------- PATHS ----------
-BASE_DIR = Path(__file__).resolve().parent[1]
+BASE_DIR = Path(__file__).resolve().parents[1]
 OBJETIVOS_JSON = os.getenv("OBJETIVOS_JSON", str(BASE_DIR / "data" / "objetivos.json"))
 PARTICIPANTES_XLSX_PATH = Path(os.getenv("PARTICIPANTES_XLSX_PATH", BASE_DIR / "data" / "dados.xlsx"))
 PARTICIPANTES_SHEET = os.getenv("PARTICIPANTES_SHEET", "profs")
