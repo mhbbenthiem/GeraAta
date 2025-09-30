@@ -1,0 +1,9 @@
+[build]
+  publish = "public"            # serve /public como site
+  functions = "netlify/functions"
+
+# Mantém as mesmas URLs do Vercel sem vercel.json:
+[[redirects]]
+  from = "/api/index/*"
+  to = "/.netlify/functions/index/:splat"
+  status = 200

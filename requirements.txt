@@ -1,7 +1,8 @@
 fastapi
-pydantic
 uvicorn
-reportlab
+pydantic
 pandas
 openpyxl
+reportlab
+mangum
 supabase
