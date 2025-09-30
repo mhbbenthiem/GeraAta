@@ -1,135 +1,149 @@
-from fastapi import FastAPI
-from fastapi import Request
-from fastapi.responses import JSONResponse, FileResponse
+# /api/index.py
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, RedirectResponse
+import os, sys, traceback
 from pathlib import Path
-import tempfile, traceback
-from gerar_ata_core import (
-    load_participantes_from_xlsx,
-    get_df_for_filters,
-    compose_text_core,
-    create_pdf,
-    core_self_check,
-    supabase_ping,
-    get_global_options,
-    get_dependent_options,
-    get_counts_summary,
-)
 
-app = FastAPI()
+app = FastAPI(title="GeraAta API")
 
-# --- util / erros
-@app.exception_handler(Exception)
-async def on_error(request: Request, exc: Exception):
-    tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-    print("SERVERLESS ERROR:", tb)
-    return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
-# --- Home -> estático
+# --- diagnostico de import ---
+IMPORT_ERROR = None
+CORE = {}
+
+def _try_import_core():
+    global IMPORT_ERROR, CORE
+    if CORE:
+        return
+    try:
+        # garante que o diretório desta função está no sys.path
+        here = Path(__file__).resolve().parent
+        if str(here) not in sys.path:
+            sys.path.insert(0, str(here))
+
+        # importa utilitários locais (mesma pasta /api)
+        import gerar_ata_core  # noqa: F401
+        CORE = {
+            "module": gerar_ata_core,
+            "supabase_ping": getattr(gerar_ata_core, "supabase_ping", None),
+            "options_global": getattr(gerar_ata_core, "options_global", None),
+            "options_filtered": getattr(gerar_ata_core, "options_filtered", None),
+            "get_participants": getattr(gerar_ata_core, "get_participants", None),
+            "list_queue": getattr(gerar_ata_core, "list_queue", None),
+            "reset_queue": getattr(gerar_ata_core, "reset_queue", None),
+            "compose_text": getattr(gerar_ata_core, "compose_text", None),
+            "enqueue_ata": getattr(gerar_ata_core, "enqueue_ata", None),
+            "finalize_and_send": getattr(gerar_ata_core, "finalize_and_send", None),
+        }
+    except Exception as e:
+        IMPORT_ERROR = f"{e.__class__.__name__}: {e}\n" + traceback.format_exc()
+
+_try_import_core()
+
+# --- rotas base / diagnostico ---
 @app.get("/")
 def root():
-    return {"ok": True, "routes": ["/health", "/options", "/participants", "/list_queue", "/compose_text", "/queue_ata", "/finalize_and_send"]}
-# --- HEALTH (formato que seu JS espera)
-@app.get("/health")  
-def health():
-    root = Path(__file__).resolve().parents[1]  
-    ok_overall, details = core_self_check(root)
-    sb_ok, sb_info = supabase_ping()
-    payload = {
-        "success": ok_overall,
-        "status": "ok" if ok_overall else "fail",
-        "counts": get_counts_summary(),
-        "supabase_ok": sb_ok,
-        "supabase_info": sb_info,
+    return {
+        "ok": True,
+        "hint": "use /health, /options, /participants, /list_queue, /compose_text, /queue_ata, /finalize_and_send",
+        "import_error": IMPORT_ERROR is not None
     }
-    return JSONResponse(payload, status_code=200 if ok_overall else 500)
 
-@app.exception_handler(Exception)
-async def on_error(request: Request, exc: Exception):
-    tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-    print("SERVERLESS ERROR:", tb)
-    return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
+@app.get("/docs_redirect")
+def docs_redirect():
+    return RedirectResponse(url="/api/index/docs")
 
-# --- OPTIONS (globais e dependentes) — usado pelos selects do frontend
+@app.get("/debug_imports")
+def debug_imports():
+    here = str(Path(__file__).resolve().parent)
+    return {
+        "cwd": os.getcwd(),
+        "here": here,
+        "sys_path_has_here": here in sys.path,
+        "import_error": IMPORT_ERROR,
+        "core_keys": sorted(list(CORE.keys())),
+        "core_missing": [k for k,v in CORE.items() if k != "module" and v is None],
+        "env_flags": {
+            "SUPABASE_URL_set": bool(os.getenv("SUPABASE_URL")),
+            "SUPABASE_KEY_set": bool(os.getenv("SUPABASE_KEY")),
+        }
+    }
+
+# --- rotas reais usadas pelo front ---
+@app.get("/health")
+def health():
+    if IMPORT_ERROR: 
+        return JSONResponse({"success": False, "error": f"import failed: {IMPORT_ERROR}"}, status_code=500)
+    ping = CORE["supabase_ping"]
+    if not ping:
+        return {"success": True, "status": "ok", "note": "supabase_ping ausente (usando stub?)"}
+    ok, info = ping()
+    return {"success": True, "status": "ok" if ok else "degraded", "env_configured": info, "counts": getattr(CORE["module"], "COUNTS", {})}
+
 @app.get("/options")
 def options(ano: str | None = None, turno: str | None = None):
-    try:
-        if ano or turno:
-            data = get_dependent_options(ano, turno)
-        else:
-            data = get_global_options()
-        return JSONResponse({"success": True, **data})
-    except Exception as e:
-        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+    if IMPORT_ERROR:
+        return JSONResponse({"success": False, "error": f"import failed: {IMPORT_ERROR}"}, status_code=500)
+    if ano or turno:
+        fn = CORE["options_filtered"] or CORE["options_global"]
+        data = fn(ano=ano, turno=turno) if fn else {}
+    else:
+        fn = CORE["options_global"]
+        data = fn() if fn else {}
+    return {"success": True, **(data or {})}
 
-# --- PARTICIPANTES (já existia)
 @app.get("/participants")
-def participants(force: bool = False):
-    return JSONResponse({"success": True, "participants": load_participantes_from_xlsx(force)})
+def participants(force: int = 0):
+    if IMPORT_ERROR:
+        return JSONResponse({"success": False, "error": f"import failed: {IMPORT_ERROR}"}, status_code=500)
+    fn = CORE["get_participants"]
+    if not fn:
+        return {"success": False, "error": "get_participants não encontrado em gerar_ata_core.py"}
+    lst = fn(force=bool(force))
+    return {"success": True, "participants": lst}
 
-# --- COMPOSE TEXT (já existia)
-@app.post("/compose_text")
-async def compose_text(request: Request):
-    p = await request.json()
-    required = ["ano","turno","turma","trimestre","numero_ata","data_reuniao","horario_inicio","horario_fim","presidente","participantes"]
-    faltando = [k for k in required if not str(p.get(k,"")).strip()]
-    if faltando:
-        return JSONResponse({"success": False, "error": f"Campos obrigatórios ausentes: {', '.join(faltando)}"}, status_code=400)
-
-    df_filt, column_map, df_base_tri = get_df_for_filters(p["ano"], p["turno"], p["turma"], p["trimestre"])
-    if df_filt.empty:
-        return JSONResponse({"success": False, "error": "Nenhum dado encontrado para os filtros."}, status_code=404)
-
-    texto = compose_text_core(
-        df_filt=df_filt, df_base_tri=df_base_tri, column_map=column_map,
-        numero_ata=p["numero_ata"], data_reuniao=p["data_reuniao"],
-        horario_inicio=p["horario_inicio"], horario_fim=p["horario_fim"],
-        presidente=p["presidente"], participantes=p["participantes"],
-        ano=p["ano"], turma=p["turma"], turno=p["turno"], trimestre=p["trimestre"],
-    )
-    return JSONResponse({"success": True, "texto": texto})
-
-# --- GENERATE PDF (se quiser usar fora da fila)
-@app.post("/generate_pdf")
-async def generate_pdf(request: Request):
-    p = await request.json()
-    required = ["ano","turno","turma","trimestre","numero_ata","data_reuniao","horario_inicio","horario_fim","presidente","participantes"]
-    faltando = [k for k in required if not str(p.get(k,"")).strip()]
-    if faltando:
-        return JSONResponse({"success": False, "error": f"Campos obrigatórios ausentes: {', '.join(faltando)}"}, status_code=400)
-
-    df_filt, column_map, df_base_tri = get_df_for_filters(p["ano"], p["turno"], p["turma"], p["trimestre"])
-    if df_filt.empty:
-        return JSONResponse({"success": False, "error": "Nenhum dado encontrado para os filtros."}, status_code=404)
-
-    pdf_buffer = create_pdf(
-        data=df_filt,
-        numero_ata=p["numero_ata"], data_reuniao=p["data_reuniao"],
-        horario_inicio=p["horario_inicio"], horario_fim=p["horario_fim"],
-        presidente=p["presidente"], participantes=p["participantes"],
-        ano=p["ano"], turma=p["turma"], turno=p["turno"], trimestre=p["trimestre"],
-        override_text=p.get("texto_editado"),
-        df_base_tri=df_base_tri, column_map=column_map,
-    )
-    tmp_pdf = Path(tempfile.gettempdir()) / f"ATA_{p['numero_ata']}.pdf"
-    with open(tmp_pdf, "wb") as f:
-        f.write(pdf_buffer.read())
-    return FileResponse(str(tmp_pdf), media_type="application/pdf", filename=tmp_pdf.name)
-
-# --- STUBS de FILA (para não quebrar a UI; em Vercel não há persistência)
 @app.get("/list_queue")
 def list_queue():
-    return JSONResponse({"success": True, "queue": []})
+    if IMPORT_ERROR:
+        return JSONResponse({"success": False, "error": f"import failed: {IMPORT_ERROR}"}, status_code=500)
+    fn = CORE["list_queue"]
+    q = fn() if fn else []
+    return {"success": True, "queue": q}
 
 @app.post("/reset_queue")
 def reset_queue():
-    return JSONResponse({"success": True})
+    if IMPORT_ERROR:
+        return JSONResponse({"success": False, "error": f"import failed: {IMPORT_ERROR}"}, status_code=500)
+    fn = CORE["reset_queue"]
+    ok = fn() if fn else False
+    return {"success": bool(ok)}
+
+@app.post("/compose_text")
+async def compose_text(req: Request):
+    if IMPORT_ERROR:
+        return JSONResponse({"success": False, "error": f"import failed: {IMPORT_ERROR}"}, status_code=500)
+    payload = await req.json()
+    fn = CORE["compose_text"]
+    if not fn:
+        return {"success": False, "error": "compose_text não encontrado"}
+    txt = fn(**payload)
+    return {"success": True, "texto": txt}
 
 @app.post("/queue_ata")
-async def queue_ata(request: Request):
-    # Aceita e responde sucesso para manter o fluxo da UI
-    _ = await request.form()  # consumimos o body para não dar erro
-    return JSONResponse({"success": True, "queued": 1, "message": "Fila desativada em serverless; use 'Pré-visualizar' e 'Gerar PDF'."})
+async def queue_ata(req: Request):
+    if IMPORT_ERROR:
+        return JSONResponse({"success": False, "error": f"import failed: {IMPORT_ERROR}"}, status_code=500)
+    form = await req.form()
+    fn = CORE["enqueue_ata"]
+    ok = fn(form) if fn else False
+    return {"success": bool(ok)}
 
 @app.post("/finalize_and_send")
-async def finalize_and_send(request: Request):
-    _ = await request.form()
-    return JSONResponse({"success": True, "message": "Envio/fila desativados no serverless. Gere e baixe o PDF pelo botão."})
+async def finalize_and_send(req: Request):
+    if IMPORT_ERROR:
+        return JSONResponse({"success": False, "error": f"import failed: {IMPORT_ERROR}"}, status_code=500)
+    form = await req.form()
+    fn = CORE["finalize_and_send"]
+    res = fn(email=form.get("email")) if fn else {"ok": False}
+    if isinstance(res, dict):
+        return {"success": res.get("ok", False), **res}
+    return {"success": bool(res)}
