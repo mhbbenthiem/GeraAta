@@ -26,7 +26,7 @@ def supabase_ping():
     return ok, info
 
 # ---------- PATHS ----------
-BASE_DIR = Path(__file__).resolve().parents[1]
+BASE_DIR = Path(__file__).resolve().parent
 OBJETIVOS_JSON = os.getenv("OBJETIVOS_JSON", str(BASE_DIR / "data" / "objetivos.json"))
 PARTICIPANTES_XLSX_PATH = Path(os.getenv("PARTICIPANTES_XLSX_PATH", BASE_DIR / "data" / "dados.xlsx"))
 PARTICIPANTES_SHEET = os.getenv("PARTICIPANTES_SHEET", "profs")
