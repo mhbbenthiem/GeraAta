@@ -2,8 +2,6 @@ from pathlib import Path
 import os, io, re, json
 from datetime import datetime
 import pandas as pd
-
-# ReportLab (PDF)
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -26,11 +24,10 @@ def supabase_ping():
     return ok, info
 
 # ---------- PATHS ----------
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parents[1]
 OBJETIVOS_JSON = os.getenv("OBJETIVOS_JSON", str(BASE_DIR / "data" / "objetivos.json"))
 PARTICIPANTES_XLSX_PATH = Path(os.getenv("PARTICIPANTES_XLSX_PATH", BASE_DIR / "data" / "dados.xlsx"))
 PARTICIPANTES_SHEET = os.getenv("PARTICIPANTES_SHEET", "profs")
-
 # ---------- CACHE ----------
 _participantes_cache = {"mtime": None, "lista": []}
 _supabase_client = None

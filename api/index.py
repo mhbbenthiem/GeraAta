@@ -3,7 +3,6 @@ from fastapi import Request
 from fastapi.responses import JSONResponse, FileResponse
 from pathlib import Path
 import tempfile, traceback
-
 from gerar_ata_core import (
     load_participantes_from_xlsx,
     get_df_for_filters,
@@ -19,14 +18,11 @@ from gerar_ata_core import (
 app = FastAPI()
 
 # --- util / erros
-
-
 @app.exception_handler(Exception)
 async def on_error(request: Request, exc: Exception):
     tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
     print("SERVERLESS ERROR:", tb)
     return JSONResponse({"success": False, "error": str(exc)}, status_code=500)
-
 # --- Home -> estático
 @app.get("/")
 def root():
@@ -34,7 +30,7 @@ def root():
 # --- HEALTH (formato que seu JS espera)
 @app.get("/health")  
 def health():
-    root = Path(__file__).resolve().parents[1]  # 'src/'
+    root = Path(__file__).resolve().parents[1]  
     ok_overall, details = core_self_check(root)
     sb_ok, sb_info = supabase_ping()
     payload = {
