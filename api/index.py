@@ -18,9 +18,7 @@ from gerar_ata_core import (
 app = FastAPI()
 
 # --- util / erros
-@app.get("/ping")
-def ping():
-    return {"pong": True}
+
 
 @app.exception_handler(Exception)
 async def on_error(request: Request, exc: Exception):
@@ -31,8 +29,10 @@ async def on_error(request: Request, exc: Exception):
 # --- Home -> estático
 @app.get("/")
 def home():
-    return RedirectResponse("/HTML_ata.html", status_code=302)
-
+    return RedirectResponse("/index.html", status_code=302)
+@app.get("/ping")
+def ping():
+    return {"pong": True}
 # --- HEALTH (formato que seu JS espera)
 @app.get("/health")  
 def health():
