@@ -28,11 +28,8 @@ async def on_error(request: Request, exc: Exception):
 
 # --- Home -> estático
 @app.get("/")
-def home():
-    return RedirectResponse("/index.html", status_code=302)
-@app.get("/ping")
-def ping():
-    return {"pong": True}
+def root():
+    return {"ok": True, "routes": ["/health", "/options", "/participants", "/list_queue", "/compose_text", "/queue_ata", "/finalize_and_send"]}
 # --- HEALTH (formato que seu JS espera)
 @app.get("/health")  
 def health():
