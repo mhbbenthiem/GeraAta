@@ -1,48 +1,58 @@
-from fastapi import FastAPI, Request
+# api/index.py — Render-ready
+import os, sys
 from pathlib import Path
-import sys
+from fastapi import FastAPI, APIRouter, Request
+from fastapi.middleware.cors import CORSMiddleware
 
+# garante import local
 here = Path(__file__).resolve().parent
 if str(here) not in sys.path:
     sys.path.insert(0, str(here))
 
-from fastapi.middleware.cors import CORSMiddleware
+app = FastAPI(title="GeraAta API")
 
-app = FastAPI()
-
-# troque pelo domínio REAL do seu front em Render:
-FRONTEND_ORIGIN = "https://geraata-1.onrender.com"
-
+# 1) CORS: ajuste para o domínio REAL do seu front
+FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "*")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_ORIGIN],  # durante teste, pode usar ["*"]
+    allow_origins=[FRONTEND_ORIGIN] if FRONTEND_ORIGIN != "*" else ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
-    allow_credentials=False,
 )
-@app.get("/")
-def root():
-    return {"ok": True, "routes": ["/health","/options","/participants"]}
 
-@app.get("/health")
+# 2) Prefixo configurável: no Render use /api/index para casar com o front
+API_PREFIX = os.getenv("API_PREFIX", "/api/index")
+api = APIRouter(prefix=API_PREFIX)
+
+@api.get("/")
+def root():
+    return {"ok": True, "routes": [f"{API_PREFIX}/health", f"{API_PREFIX}/options", f"{API_PREFIX}/participants"]}
+
+@api.get("/health")
 def health():
     import gerar_ata_core as core
     ok_env, info = core.supabase_ping()
-    return {"status": "ok" if (ok_env or True) else "degraded", "env": info}
+    counts = core.get_counts_summary()
+    return {
+        "success": True,
+        "status": "ok",
+        "env_configured": {"SUPABASE_URL_set": info["SUPABASE_URL_set"], "SUPABASE_KEY_set": info["SUPABASE_KEY_set"]},
+        "counts": counts,
+    }
 
-@app.get("/options")
+@api.get("/options")
 def options(ano: str | None = None, turno: str | None = None):
     import gerar_ata_core as core
     data = core.get_dependent_options(ano=ano, turno=turno) if (ano or turno) else core.get_global_options()
     return {"success": True, **data}
 
-@app.get("/participants")
+@api.get("/participants")
 def participants(force: int = 0):
     import gerar_ata_core as core
     lst = core.load_participantes_from_xlsx(force=bool(force))
     return {"success": True, "participants": lst}
 
-@app.post("/compose_text")
+@api.post("/compose_text")
 async def compose_text(req: Request):
     import gerar_ata_core as core
     payload = await req.json()
@@ -59,3 +69,18 @@ async def compose_text(req: Request):
         turno=payload.get("turno"), trimestre=payload.get("trimestre"),
     )
     return {"success": True, "texto": txt}
+
+# Stubs para não quebrar os botões do front
+@api.get("/list_queue")
+def list_queue(): return {"success": True, "queue": []}
+
+@api.post("/reset_queue")
+def reset_queue(): return {"success": True}
+
+@api.post("/queue_ata")
+async def queue_ata(_: Request): return {"success": True}
+
+@api.post("/finalize_and_send")
+async def finalize_and_send(_: Request): return {"success": True, "message": "Processo finalizado (stub)"}
+
+app.include_router(api)
