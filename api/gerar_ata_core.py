@@ -34,6 +34,7 @@ _supabase_client = None
 objetivos_map = {}
 
 # ---------- MAPA DE COLUNAS ----------
+# Mapa base (mantém compatibilidade com o que você já usa)
 COLUMN_MAP = {
     "ano": "ano",
     "turno": "turno",
@@ -41,11 +42,52 @@ COLUMN_MAP = {
     "trimestre": "trimestre",
     "aluno": "aluno",
     "materia": "materia",
-    "descricao": "descricao",
+    "descricao": "descricao",      # será refinado por infer_column_map
     "papi": "papi",
     "inclusao": "inclusao",
     "perfil_turma": "perfilturma",
 }
+
+def infer_column_map(df, base: dict | None = None) -> dict:
+    """
+    Infere colunas equivalentes quando os nomes variam entre planilhas.
+    Preserva mapeamentos já válidos em 'base'.
+    """
+    import pandas as pd
+    colmap = dict(base or COLUMN_MAP)
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return colmap
+
+    cols_lc = {c.lower(): c for c in df.columns}
+
+    def pick(candidates: list[str], key: str) -> str:
+        # Se já está mapeado e existe no DF, preserva
+        if colmap.get(key) in df.columns:
+            return colmap[key]
+        # Tenta candidatos (case-insensitive)
+        for cand in candidates:
+            lc = cand.lower()
+            if lc in cols_lc:
+                colmap[key] = cols_lc[lc]
+                return colmap[key]
+        # Por fim, se a própria chave existir no DF, usa
+        if key in df.columns:
+            colmap[key] = key
+        return colmap.get(key, key)
+
+    pick(["descrição", "descricao", "comentário", "comentarios", "comentario",
+          "parecer", "observacao", "observação"], "descricao")
+    pick(["matéria", "materia", "disciplina", "componente", "componente curricular"], "materia")
+    pick(["aluno", "estudante", "nome do aluno", "nome_aluno"], "aluno")
+    pick(["turma", "sala"], "turma")
+    pick(["turno", "periodo"], "turno")
+    pick(["trimestre", "bimestre", "etapa"], "trimestre")
+    pick(["ano", "serie", "série"], "ano")
+    pick(["perfil_turma", "perfil da turma", "perfil da sala"], "perfil_turma")
+    pick(["inclusao", "inclusão", "aee"], "inclusao")
+    pick(["papi", "plano de apoio pedagógico individualizado"], "papi")
+    return colmap
+
 
 # ---------- ENV / SUPABASE ----------
 def _get_env():
@@ -98,6 +140,10 @@ def fetch_local_df(ano=None, turno=None, turma=None, trimestre=None) -> pd.DataF
     return df
 
 def get_df_for_filters(ano, turno, turma, trimestre):
+    """
+    Carrega DF principal e DF-base do trimestre. Retorna (df_filt, column_map, df_base_tri)
+    com column_map inferido para tolerar cabeçalhos variáveis.
+    """
     if _env_has_supabase():
         try:
             df_filt = fetch_supabase_df(ano=ano, turno=turno, turma=turma, trimestre=trimestre)
@@ -108,7 +154,11 @@ def get_df_for_filters(ano, turno, turma, trimestre):
     else:
         df_filt = fetch_local_df(ano, turno, turma, trimestre)
         df_base_tri = fetch_local_df(None, None, None, trimestre)
-    return df_filt, COLUMN_MAP, df_base_tri
+
+    # Escolhe um DF de referência (o próprio filtrado, se houver; senão, o base do trimestre)
+    ref_df = df_filt if (df_filt is not None and not df_filt.empty) else df_base_tri
+    colmap = infer_column_map(ref_df, COLUMN_MAP)
+    return df_filt, colmap, df_base_tri
 
 # ---------- PARTICIPANTES ----------
 def load_participantes_from_xlsx(force=False) -> list[str]:
@@ -201,27 +251,71 @@ def objetivos_para_texto(ano:str, trimestre:str)->str:
     return " ".join(blocos)
 
 # ---------- INTEGRAL / AGRUPAÇÃO ----------
-def filtra_integral_df(df_base_tri: pd.DataFrame, column_map: dict, ano_num:int, trimestre)->pd.DataFrame:
-    df = df_base_tri.copy()
-    tri_col = column_map["trimestre"]
-    def _to_int(x):
-        try: return int(str(x).strip())
-        except: return None
-    return df[df[tri_col].map(_to_int) == _to_int(trimestre)]
+def filtra_integral_df(df_base_tri: pd.DataFrame, column_map: dict, ano_num: int, trimestre) -> pd.DataFrame:
+    """
+    Filtra o DF base do trimestre (se existir) para obter apenas os registros do mesmo trimestre
+    — usado como fonte para observações do 'Integral'.
+    """
+    if not isinstance(df_base_tri, pd.DataFrame) or df_base_tri.empty:
+        return df_base_tri
 
-def montar_partes_por_aluno(df_filt: pd.DataFrame, df_integral: pd.DataFrame, column_map: dict)->list[str]:
-    alu_col = column_map["aluno"]; mat_col = column_map["materia"]; desc_col = column_map["descricao"]
-    blocos=[]
+    tri_col = column_map["trimestre"]
+
+    def _to_int(x):
+        try:
+            return int(str(x).strip())
+        except Exception:
+            return None
+
+    wanted = _to_int(trimestre)
+    if wanted is None or tri_col not in df_base_tri.columns:
+        return df_base_tri
+
+    return df_base_tri[df_base_tri[tri_col].map(_to_int) == wanted]
+
+def montar_partes_por_aluno(df_filt: pd.DataFrame, df_integral: pd.DataFrame, column_map: dict) -> list[str]:
+    """
+    Monta blocos do tipo:
+      'Aluno: matéria: descrição. ... Integral: matéria: descrição. ...'
+    Se df_integral estiver vazio/None, gera apenas com df_filt.
+    """
+    alu_col = column_map["aluno"]
+    mat_col = column_map["materia"]
+    desc_col = column_map["descricao"]
+
+    blocos = []
+
+    # Índice do Integral por aluno
+    integral_map = {}
+    if isinstance(df_integral, pd.DataFrame) and not df_integral.empty:
+        for aluno_i, gi in df_integral.groupby(alu_col):
+            pecas_i = []
+            for _, row in gi.iterrows():
+                imat = str(row.get(mat_col, "")).strip()
+                idesc = str(row.get(desc_col, "")).strip()
+                if imat and idesc:
+                    pecas_i.append(ensure_ponto(f"{imat}: {idesc}"))
+            if pecas_i:
+                integral_map[str(aluno_i).strip()] = " ".join(pecas_i)
+
+    # Blocos principais por aluno
     for aluno, g in df_filt.groupby(alu_col):
-        pecas=[]
+        pecas = []
         for _, row in g.iterrows():
-            materia = str(row.get(mat_col,"")).strip()
-            desc = str(row.get(desc_col,"")).strip()
+            materia = str(row.get(mat_col, "")).strip()
+            desc = str(row.get(desc_col, "")).strip()
             if materia and desc:
                 pecas.append(ensure_ponto(f"{materia}: {desc}"))
+
+        extra = integral_map.get(str(aluno).strip())
+        if extra:
+            pecas.append(ensure_ponto(f"Integral: {extra}"))
+
         if pecas:
             blocos.append(ensure_ponto(f"{aluno}: " + " ".join(pecas)))
+
     return blocos
+
 
 # ---------- TEXTO COMPLETO ----------
 def compose_text_core(df_filt, df_base_tri, column_map, numero_ata, data_reuniao, horario_inicio, horario_fim,
