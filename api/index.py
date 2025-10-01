@@ -6,8 +6,20 @@ here = Path(__file__).resolve().parent
 if str(here) not in sys.path:
     sys.path.insert(0, str(here))
 
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI()
 
+# troque pelo domínio REAL do seu front em Render:
+FRONTEND_ORIGIN = "https://geraata-1.onrender.com"
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[FRONTEND_ORIGIN],  # durante teste, pode usar ["*"]
+    allow_methods=["*"],
+    allow_headers=["*"],
+    allow_credentials=False,
+)
 @app.get("/")
 def root():
     return {"ok": True, "routes": ["/health","/options","/participants"]}
