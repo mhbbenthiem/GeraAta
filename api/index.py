@@ -1,5 +1,5 @@
 # api/index.py — Render-ready
-import os, sys, zipfile, smtplib, ssl
+import os, sys, zipfile, smtplib, ssl, io
 from pathlib import Path
 from email.message import EmailMessage
 from typing import List, Tuple
@@ -84,7 +84,7 @@ def _send_email_with_attachment(
         return False, f"Falha no envio: {e}"
 
 # 1) CORS: ajuste para o domínio REAL do seu front
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "*")
+FRONTEND_ORIGIN = "https://geraata-1.onrender.com/"
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[FRONTEND_ORIGIN] if FRONTEND_ORIGIN != "*" else ["*"],
@@ -171,7 +171,11 @@ async def queue_ata(req: Request):
     """
     import gerar_ata_core as core
 
-    payload = await req.json()
+    try:
+        payload = await req.json()
+    except Exception:
+        form = await req.form()
+        payload = dict(form)
 
     df_filt, colmap, df_base_tri = core.get_df_for_filters(
         ano=payload.get("ano"),
@@ -202,20 +206,20 @@ async def queue_ata(req: Request):
         turma=payload.get("turma"),
         turno=payload.get("turno"),
         trimestre=payload.get("trimestre"),
-        override_text=payload.get("override_text"),
+        override_text=payload.get("texto_editado") or payload.get("override_text"),
         df_base_tri=df_base_tri,
         column_map=colmap,
     )
 
-    # Se a função retornou bytes, salvamos; senão assumimos que salvou em disco.
+    # 2) salvar o PDF retornado (BytesIO) no caminho esperado
     if isinstance(result, (bytes, bytearray)):
         fpath.write_bytes(result)
+    elif isinstance(result, io.BytesIO):
+        fpath.write_bytes(result.getvalue())
     else:
+        # se sua função passar a salvar em disco futuramente, mantenha o fallback:
         if not fpath.exists():
-            raise HTTPException(
-                status_code=500,
-                detail="create_pdf não retornou bytes e o arquivo esperado não foi encontrado."
-            )
+            raise HTTPException(500, "create_pdf não retornou bytes e o arquivo esperado não foi encontrado.")
 
     item = {"filename": fpath.name, "path": str(fpath), "size": fpath.stat().st_size}
     QUEUE.append(item)
@@ -224,11 +228,13 @@ async def queue_ata(req: Request):
 
 @api.post("/finalize_and_send")
 async def finalize_and_send(req: Request):
-    """
-    Compacta a fila em um ZIP e envia por e-mail usando SMTP.
-    Payload (JSON): {"to": ["a@b.com"], "cc": ["c@d.com"], "subject": "...", "body": "..."}
-    """
-    payload = await req.json()
+    # aceitar JSON ou FormData
+    try:
+        payload = await req.json()
+    except Exception:
+        form = await req.form()
+        payload = dict(form)
+
     if not QUEUE:
         return {"success": False, "message": "Fila vazia."}
 
@@ -244,13 +250,17 @@ async def finalize_and_send(req: Request):
         raise HTTPException(500, f"Falha ao zipar: {e}")
 
     # Envia e-mail
-    to = payload.get("to") or []
+    to = payload.get("to")
+    if not to:
+        email = (payload.get("email") or "").strip()
+        to = [email] if email else []
+
     cc = payload.get("cc") or []
     subject = payload.get("subject") or "Atas Conselho de Classe"
     body    = payload.get("body") or "Segue em anexo o arquivo .zip com as atas."
     ok, msg = _send_email_with_attachment(subject, body, to, ZIP_PATH, cc)
 
-    return {"success": ok, "message": msg, "zip_size": zip_size, "zip_name": ZIP_PATH.name}
+    return {"success": ok, "message": msg, "zip_size": ZIP_PATH.stat().st_size, "zip_name": ZIP_PATH.name}
 
 @api.get("/download_zip")
 def download_zip():
