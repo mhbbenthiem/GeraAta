@@ -1,5 +1,6 @@
 # api/index.py — Render-ready
 import os, sys, zipfile, smtplib, ssl, io
+import json, base64, http.client, mimetypes
 from pathlib import Path
 from email.message import EmailMessage
 from typing import List, Tuple
@@ -246,6 +247,63 @@ async def queue_ata(req: Request):
     return {"success": True, "queued": {"filename": fpath.name, "size": fpath.stat().st_size}}
 
 
+def _send_email_via_resend(
+    subject: str,
+    body: str,
+    to_addrs: list[str],
+    attach_path: Path,
+    cc_addrs: list[str] | None = None,
+) -> tuple[bool, str]:
+    """
+    Envia email via HTTP (Resend). Requer:
+      - RESEND_API_KEY no ambiente do backend
+      - SMTP_FROM (ou SMTP_USER) como remetente
+    """
+    api_key = os.getenv("RESEND_API_KEY")
+    if not api_key:
+        return False, "RESEND_API_KEY não configurada."
+    sender = os.getenv("SMTP_FROM") or os.getenv("SMTP_USER")
+    if not sender:
+        return False, "Defina SMTP_FROM ou SMTP_USER como remetente."
+
+    if not (attach_path and attach_path.exists()):
+        return False, "Anexo não encontrado para envio."
+
+    data = attach_path.read_bytes()
+    b64  = base64.b64encode(data).decode("ascii")
+
+    payload = {
+        "from": sender,
+        "to": to_addrs or [],
+        "subject": subject or "",
+        "text": body or "",
+        **({"cc": cc_addrs} if cc_addrs else {}),
+        "attachments": [{
+            "filename": attach_path.name,
+            "content": b64,
+            "contentType": "application/zip",
+        }],
+    }
+    body_json = json.dumps(payload)
+
+    conn = http.client.HTTPSConnection("api.resend.com", timeout=20)
+    try:
+        conn.request(
+            "POST", "/emails", body=body_json,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        )
+        resp = conn.getresponse()
+        text = resp.read().decode("utf-8", "ignore")
+        if 200 <= resp.status < 300:
+            return True, "E-mail enviado via Resend."
+        return False, f"Resend {resp.status}: {text}"
+    except Exception as e:
+        return False, f"Falha HTTP (Resend): {e}"
+    finally:
+        try: conn.close()
+        except Exception: pass
+
+
 @api.post("/finalize_and_send")
 async def finalize_and_send(req: Request):
     # aceitar JSON ou FormData
@@ -258,9 +316,9 @@ async def finalize_and_send(req: Request):
     if not QUEUE:
         return {"success": False, "message": "Fila vazia."}
 
-    # Cria ZIP
+    # (1) Cria ZIP - mais rápido (STORED) porque PDF já é comprimido
     try:
-        with zipfile.ZipFile(ZIP_PATH, "w", zipfile.ZIP_DEFLATED) as z:
+        with zipfile.ZipFile(ZIP_PATH, "w", compression=zipfile.ZIP_STORED) as z:
             for it in QUEUE:
                 p = Path(it["path"])
                 if p.exists():
@@ -269,7 +327,17 @@ async def finalize_and_send(req: Request):
     except Exception as e:
         raise HTTPException(500, f"Falha ao zipar: {e}")
 
-    # Envia e-mail
+    # (2) Guardrail de tamanho (opcional, mas útil)
+    MAX_ATTACH = 24 * 1024 * 1024  # ~24MB
+    if zip_size >= MAX_ATTACH:
+        return {
+            "success": False,
+            "message": f"ZIP com {zip_size} bytes excede ~24MB. Gere e envie em partes.",
+            "zip_size": zip_size,
+            "zip_name": ZIP_PATH.name
+        }
+
+    # (3) Envia e-mail (provider por env)
     to = payload.get("to")
     if not to:
         email = (payload.get("email") or "").strip()
@@ -277,10 +345,23 @@ async def finalize_and_send(req: Request):
 
     cc = payload.get("cc") or []
     subject = payload.get("subject") or "Atas Conselho de Classe"
-    body    = payload.get("body") or "Segue em anexo o arquivo .zip com as atas."
-    ok, msg = _send_email_with_attachment(subject, body, to, ZIP_PATH, cc)
+    body    = payload.get("body") or "Segue em anexo o arquivo .zip com as atas geradas."
 
-    return {"success": ok, "message": msg, "zip_size": ZIP_PATH.stat().st_size, "zip_name": ZIP_PATH.name}
+    provider = (os.getenv("EMAIL_PROVIDER") or "RESEND").upper()
+    if provider == "RESEND":
+        ok, msg = _send_email_via_resend(subject, body, to, ZIP_PATH, cc)
+    else:
+        # usa sua função SMTP existente como fallback (vai falhar se SMTP estiver bloqueado)
+        ok, msg = _send_email_with_attachment(subject, body, to, ZIP_PATH, cc)
+
+    return {
+        "success": ok,
+        "message": msg,
+        "zip_size": zip_size,
+        "zip_name": ZIP_PATH.name,
+        "provider": provider,
+    }
+
 
 @api.get("/download_zip")
 def download_zip():
