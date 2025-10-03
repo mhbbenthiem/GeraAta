@@ -493,6 +493,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ---------- fila ----------
+  // index.html -> função refreshQueue()
   async function refreshQueue() {
     try {
       const resp = await fetch(`${API}/list_queue`);
@@ -501,7 +502,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (data.success && data.queue.length) {
         data.queue.forEach(n => {
           const li = document.createElement('li');
-          li.textContent = n;
+          li.textContent = `${n.filename} (${n.size} bytes)`; // <= aqui!
           queueList.appendChild(li);
         });
       } else {
@@ -511,6 +512,7 @@ document.addEventListener('DOMContentLoaded', () => {
       showStatus('Não foi possível listar a fila: ' + e.message, 'error');
     }
   }
+
   btnList.addEventListener('click', refreshQueue);
 
   btnReset.addEventListener('click', async () => {
@@ -603,29 +605,38 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // ---------- finalizar ----------
-  btnFinalize.addEventListener('click', async () => {
-    if (!email.value || !email.value.trim()) {
-      showStatus('Informe um e-mail válido.', 'error'); return;
+  // index.html -> handler do btnFinalize
+btnFinalize.addEventListener('click', async () => {
+  if (!email.value || !email.value.trim()) {
+    showStatus('Informe um e-mail válido.', 'error'); return;
+  }
+  try {
+    setProgress(true);
+    const resp = await fetch(`${API}/finalize_and_send`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        to: [email.value.trim()],
+        subject: 'Atas Conselho de Classe',
+        body: 'Segue em anexo o arquivo .zip com as atas.'
+      })
+    });
+    const data = await resp.json();
+    if (data.success) {
+      let msg = data.message || 'Enviado.';
+      // se quiser oferecer download do zip:
+      msg += ` — Baixar ZIP: ${API}/download_zip`;
+      showStatus(msg, 'success');
+    } else {
+      showStatus(data.message || data.error || 'Falha ao finalizar envio.', 'error');
     }
-    try {
-      setProgress(true);
-      const fd = new FormData();
-      fd.append('email', email.value.trim());
-      const resp = await fetch(`${API}/finalize_and_send`, { method: 'POST', body: fd });
-      const data = await resp.json();
-      if (data.success) {
-        let msg = data.message;
-        if (data.download_url) msg += ` — Baixe o ZIP aqui: ${data.download_url}`;
-        showStatus(msg, 'success');
-      } else {
-        showStatus(data.error || 'Falha ao finalizar envio.', 'error');
-      }
-    } catch (e) {
-      showStatus('Erro ao finalizar: ' + e.message, 'error');
-    } finally {
-      setProgress(false);
-    }
-  });
+  } catch (e) {
+    showStatus('Erro ao finalizar: ' + e.message, 'error');
+  } finally {
+    setProgress(false);
+  }
+});
+
 
   // init
   initFilters().then(() => refreshQueue()).catch(()=>{});
