@@ -84,7 +84,7 @@ def _send_email_with_attachment(
         return False, f"Falha no envio: {e}"
 
 # 1) CORS: ajuste para o domínio REAL do seu front
-FRONTEND_ORIGIN = "https://geraata-1.onrender.com/"
+FRONTEND_ORIGIN = "https://geraata-1.onrender.com"
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[FRONTEND_ORIGIN] if FRONTEND_ORIGIN != "*" else ["*"],
