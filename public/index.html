@@ -583,7 +583,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       setProgress(true);
-      const resp = await fetch(`${API}/queue_ata`, { method: 'POST', body: fd });
+      const resp = await fetch(`${API}/queue_ata`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(collectComposePayload()),
+      })
       const data = await resp.json();
       if (data.success) {
         showStatus('Ata adicionada à fila!', 'success');
