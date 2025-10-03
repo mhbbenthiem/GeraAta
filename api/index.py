@@ -85,11 +85,15 @@ def _send_email_with_attachment(
 
 # 1) CORS: ajuste para o domínio REAL do seu front
 FRONTEND_ORIGIN = "https://geraata-1.onrender.com"
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_ORIGIN] if FRONTEND_ORIGIN != "*" else ["*"],
+    allow_origins=[FRONTEND_ORIGIN],   # sem barra no origin!
     allow_methods=["*"],
     allow_headers=["*"],
+    # se em algum momento você usar fetch com credenciais: credentials: 'include'
+    # ative isto ↓ e mantenha allow_origins específico (não "*")
+    # allow_credentials=True,
 )
 
 # 2) Prefixo configurável: no Render use /api/index para casar com o front
