@@ -6,7 +6,7 @@ from typing import List, Tuple
 from fastapi import FastAPI, APIRouter, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-
+import socket, errno
 # garante import local
 here = Path(__file__).resolve().parent
 if str(here) not in sys.path:
@@ -38,6 +38,7 @@ def _queue_snapshot() -> list[dict]:
         })
     return snap
 
+
 def _send_email_with_attachment(
     subject: str,
     body: str,
@@ -62,26 +63,41 @@ def _send_email_with_attachment(
         msg["Cc"]  = ", ".join(cc_addrs)
     msg.set_content(body or "")
 
-    if attach_path and attach_path.exists():
-        data = attach_path.read_bytes()
-        msg.add_attachment(data, maintype="application", subtype="zip", filename=attach_path.name)
-    else:
+    if not (attach_path and attach_path.exists()):
         return False, "Anexo não encontrado para envio."
+    data = attach_path.read_bytes()
+    msg.add_attachment(data, maintype="application", subtype="zip", filename=attach_path.name)
 
+    # --- resolve e tenta cada endereço (v6/v4) com timeout curto ---
+    last_err = None
     try:
-        if tls:
-            context = ssl.create_default_context()
-            with smtplib.SMTP(host, port) as server:
-                server.starttls(context=context)
-                server.login(user, pwd)
-                server.send_message(msg)
-        else:
-            with smtplib.SMTP(host, port) as server:
-                server.login(user, pwd)
-                server.send_message(msg)
-        return True, "E-mail enviado."
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
     except Exception as e:
-        return False, f"Falha no envio: {e}"
+        return False, f"Falha DNS/resolve para {host}: {e}"
+
+    for family, socktype, proto, canonname, sockaddr in infos:
+        ip = sockaddr[0]
+        try:
+            # timeout total por tentativa (ajuste se quiser)
+            with smtplib.SMTP(timeout=20) as server:
+                # conecta no IP específico (força v4 quando ip é A-record)
+                server.connect(ip, port)
+                if tls:
+                    context = ssl.create_default_context()
+                    server.starttls(context=context)
+                server.login(user, pwd)
+                server.send_message(msg)
+            return True, "E-mail enviado."
+        except OSError as e:
+            last_err = e
+            # ENETUNREACH: “Network is unreachable” -> tenta o próximo IP
+            if isinstance(e, OSError) and getattr(e, "errno", None) == errno.ENETUNREACH:
+                continue
+        except Exception as e:
+            last_err = e
+
+    # se chegou aqui, todas as tentativas falharam
+    return False, f"Falha no envio (rede/SMTP): {host}:{port} — último erro: {last_err}"
 
 # 1) CORS: ajuste para o domínio REAL do seu front
 FRONTEND_ORIGIN = "https://geraata-1.onrender.com"
