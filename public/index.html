@@ -616,25 +616,32 @@ btnList.addEventListener('click', refreshQueue);
 btnFinalize.addEventListener('click', async () => {
   try {
     setProgress(true);
+
+    // 1) pede para o backend gerar o ZIP
     const resp = await fetch(`${API}/finalize_and_send`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({}) // mantemos o POST, mas sem e-mail
+      body: JSON.stringify({}) // não precisamos enviar nada
     });
+    if (!resp.ok) {
+      const txt = await resp.text().catch(()=>'');
+      showStatus(`Falha ao finalizar: HTTP ${resp.status} ${txt}`, 'error');
+      return;
+    }
     const data = await resp.json();
+
     if (!data.success) {
       showStatus(data.message || 'Falha ao finalizar.', 'error');
       return;
     }
-    showStatus('ZIP gerado. Iniciando download...', 'success');
 
-    // força download navegando direto (evita CORS de fetch->blob)
+    // 2) só depois de criar, baixa o ZIP
     const url = `${API}/download_zip?ts=${Date.now()}`;
     window.location.href = url;
 
-    // (opcional) limpar fila depois
-    await fetch(`${API}/reset_queue`, { method: 'POST' });
-    await refreshQueue();
+    // (opcional) atualizar lista após alguns segundos
+    // setTimeout(refreshQueue, 1500);
+
   } catch (e) {
     showStatus('Erro ao finalizar: ' + e.message, 'error');
   } finally {
