@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<link rel="icon" href="/mira_favicon.png" type="image/png">
+<link rel="icon" href="/mira_favicon.png" type="image/png" sizes="32x32">
 <title>Gerador de Atas - Conselho de Classe</title>
 <style>
 /* (base visual do seu arquivo, mantida e levemente ajustada) */
@@ -181,14 +181,7 @@ body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background: #434276
 
       <!-- Fila e E-mail -->
       <div class="form-section">
-        <h3> Envio</h3>
-        <div class="form-row">
-          <div class="form-group">
-            <label for="email">Seu e-mail (para receber o ZIP no final)</label>
-            <input type="email" id="email" required placeholder="voce@exemplo.com"/>
-          </div>
-        </div>
-
+        <h3> Gerar</h3>
         <div class="form-row">
           <button type="button" class="btn btn-success" id="btnAdd"> Adicionar à fila (Gerar mais uma)</button>
           <button type="button" class="btn" id="btnList"> Atualizar fila</button>
@@ -201,7 +194,7 @@ body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background: #434276
         </div>
 
         <button type="button" class="btn btn-danger" id="btnFinalize" style="width:100%;margin-top:16px">
-           Finalizar e enviar ZIP por e-mail
+           Finalizar e fazer donwload do .zip
         </button>
 
         <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progressFill"></div></div>
@@ -226,7 +219,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const horario_fim = document.getElementById('horario_fim');
   const presidente = document.getElementById('presidente');
   const participantes = document.getElementById('participantes');
-  const email = document.getElementById('email');
+
 
   const btnAdd = document.getElementById('btnAdd');
   const btnList = document.getElementById('btnList');
@@ -575,7 +568,7 @@ btnList.addEventListener('click', refreshQueue);
 
   // ---------- adicionar à fila ----------
   btnAdd.addEventListener('click', async () => {
-    const required = [anoSel, turnoSel, turmaSel, trimestreSel, numero_ata, data_reuniao, horario_inicio, horario_fim, presidente, participantes, email];
+    const required = [anoSel, turnoSel, turmaSel, trimestreSel, numero_ata, data_reuniao, horario_inicio, horario_fim, presidente, participantes];
     for (const el of required) {
       if (!el.value || !el.value.trim()) {
         showStatus('Preencha todos os campos e filtros.', 'error');
