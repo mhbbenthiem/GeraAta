@@ -494,29 +494,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---------- fila ----------
   // index.html -> função refreshQueue()
-  async function refreshQueue() {
-    try {
-      const resp = await fetch(`${API}/list_queue`);
-      const data = await resp.json();
-      queueList.innerHTML = '';
-      if (data.success && data.queue.length) {
-        data.queue.forEach(n => {
-          const li = document.createElement('li');
-          const kb = (n.size/1024).toFixed(1);
-          li.textContent = `${n.filename} (${kb} KB)`;
-          queueList.appendChild(li);
-        });
-      } else {
-        queueList.innerHTML = '<li>(vazia)</li>';
-      }
+async function refreshQueue() {
+  try {
+    const resp = await fetch(`${API}/list_queue`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
 
-      }
-    } catch (e) {
-      showStatus('Não foi possível listar a fila: ' + e.message, 'error');
+    queueList.innerHTML = '';
+
+    if (data?.success && Array.isArray(data.queue) && data.queue.length) {
+      data.queue.forEach(({ filename, size }) => {
+        const li = document.createElement('li');
+        const kb = ((size || 0) / 1024).toFixed(1);
+        li.textContent = `${filename || 'arquivo'} (${kb} KB)`;
+        queueList.appendChild(li);
+      });
+    } else {
+      queueList.innerHTML = '<li>(vazia)</li>';
     }
-  }
 
-  btnList.addEventListener('click', refreshQueue);
+  } catch (e) {
+    showStatus('Não foi possível listar a fila: ' + e.message, 'error');
+  }
+}
+
+btnList.addEventListener('click', refreshQueue);
+
 
   btnReset.addEventListener('click', async () => {
     try {
