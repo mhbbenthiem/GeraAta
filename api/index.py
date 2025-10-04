@@ -306,17 +306,19 @@ def _send_email_via_resend(
 
 @api.post("/finalize_and_send")
 async def finalize_and_send(req: Request):
-    # aceitar JSON ou FormData
+    # não precisamos mais do payload (e-mail); mantemos compatibilidade
     try:
-        payload = await req.json()
+        _ = await req.json()
     except Exception:
-        form = await req.form()
-        payload = dict(form)
+        try:
+            _ = await req.form()
+        except Exception:
+            _ = {}
 
     if not QUEUE:
         return {"success": False, "message": "Fila vazia."}
 
-    # (1) Cria ZIP - mais rápido (STORED) porque PDF já é comprimido
+    # Cria ZIP (rápido p/ PDF: STORED)
     try:
         with zipfile.ZipFile(ZIP_PATH, "w", compression=zipfile.ZIP_STORED) as z:
             for it in QUEUE:
@@ -327,40 +329,16 @@ async def finalize_and_send(req: Request):
     except Exception as e:
         raise HTTPException(500, f"Falha ao zipar: {e}")
 
-    # (2) Guardrail de tamanho (opcional, mas útil)
-    MAX_ATTACH = 24 * 1024 * 1024  # ~24MB
-    if zip_size >= MAX_ATTACH:
-        return {
-            "success": False,
-            "message": f"ZIP com {zip_size} bytes excede ~24MB. Gere e envie em partes.",
-            "zip_size": zip_size,
-            "zip_name": ZIP_PATH.name
-        }
-
-    # (3) Envia e-mail (provider por env)
-    to = payload.get("to")
-    if not to:
-        email = (payload.get("email") or "").strip()
-        to = [email] if email else []
-
-    cc = payload.get("cc") or []
-    subject = payload.get("subject") or "Atas Conselho de Classe"
-    body    = payload.get("body") or "Segue em anexo o arquivo .zip com as atas geradas."
-
-    provider = (os.getenv("EMAIL_PROVIDER") or "RESEND").upper()
-    if provider == "RESEND":
-        ok, msg = _send_email_via_resend(subject, body, to, ZIP_PATH, cc)
-    else:
-        # usa sua função SMTP existente como fallback (vai falhar se SMTP estiver bloqueado)
-        ok, msg = _send_email_with_attachment(subject, body, to, ZIP_PATH, cc)
-
+    # responde com a URL para download
+    download_url = f"{API_PREFIX}/download_zip"
     return {
-        "success": ok,
-        "message": msg,
+        "success": True,
+        "message": "ZIP gerado.",
         "zip_size": zip_size,
         "zip_name": ZIP_PATH.name,
-        "provider": provider,
+        "download_url": download_url
     }
+
 
 
 @api.get("/download_zip")

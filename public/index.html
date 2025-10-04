@@ -502,11 +502,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (data.success && data.queue.length) {
         data.queue.forEach(n => {
           const li = document.createElement('li');
-          li.textContent = `${n.filename} (${n.size} bytes)`; // <= aqui!
+          const kb = (n.size/1024).toFixed(1);
+          li.textContent = `${n.filename} (${kb} KB)`;
           queueList.appendChild(li);
         });
       } else {
         queueList.innerHTML = '<li>(vazia)</li>';
+      }
+
       }
     } catch (e) {
       showStatus('Não foi possível listar a fila: ' + e.message, 'error');
@@ -606,36 +609,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ---------- finalizar ----------
   // index.html -> handler do btnFinalize
+// Finalizar -> gerar ZIP e baixar
 btnFinalize.addEventListener('click', async () => {
-  if (!email.value || !email.value.trim()) {
-    showStatus('Informe um e-mail válido.', 'error'); return;
-  }
   try {
     setProgress(true);
     const resp = await fetch(`${API}/finalize_and_send`, {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({
-        to: [email.value.trim()],
-        subject: 'Atas Conselho de Classe',
-        body: 'Segue em anexo o arquivo .zip com as atas.'
-      })
+      body: JSON.stringify({}) // mantemos o POST, mas sem e-mail
     });
     const data = await resp.json();
-    if (data.success) {
-      let msg = data.message || 'Enviado.';
-      // se quiser oferecer download do zip:
-      msg += ` — Baixar ZIP: ${API}/download_zip`;
-      showStatus(msg, 'success');
-    } else {
-      showStatus(data.message || data.error || 'Falha ao finalizar envio.', 'error');
+    if (!data.success) {
+      showStatus(data.message || 'Falha ao finalizar.', 'error');
+      return;
     }
+    showStatus('ZIP gerado. Iniciando download...', 'success');
+
+    // força download navegando direto (evita CORS de fetch->blob)
+    const url = `${API}/download_zip?ts=${Date.now()}`;
+    window.location.href = url;
+
+    // (opcional) limpar fila depois
+    await fetch(`${API}/reset_queue`, { method: 'POST' });
+    await refreshQueue();
   } catch (e) {
     showStatus('Erro ao finalizar: ' + e.message, 'error');
   } finally {
     setProgress(false);
   }
 });
+
 
 
   // init
